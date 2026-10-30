@@ -1,0 +1,626 @@
+{
+  "project": {
+    "id": "unbox",
+    "title": "unbox — hardware effort breakdown",
+    "docUrl": "https://wiki.dummy.com/doc/effort-breakdown-hardware-week-3-6SbAlnHfGq"
+  },
+  "calendar": {
+    "workdays": ["mon", "tue", "wed", "thu", "fri", "sat"],
+    "weekEffortDays": 6,
+    "blockWeeks": 2,
+    "timeline": {"end": "2026-12-31"},
+    "holidays": ["2026-09-14", "2026-10-02", "2026-10-20", "2026-10-21", "2026-11-09", "2026-11-10", "2026-12-25"]
+  },
+  "weeks": [
+    {"id": "w1", "name": "Week 1", "start": "2026-08-31", "end": "2026-09-05", "note": "ETC 5/9/26"},
+    {"id": "w2", "name": "Week 2", "start": "2026-09-07", "end": "2026-09-12"},
+    {
+      "id": "w3",
+      "name": "Week 3",
+      "start": "2026-09-15",
+      "end": "2026-09-19",
+      "note": "Assuming bot is available by end of week 3"
+    },
+    {
+      "id": "w4",
+      "name": "Week 4",
+      "start": "2026-09-21",
+      "end": "2026-09-26",
+      "note": "EOW4: bot teleoperable, systems in place to collect data, viz verifiable on dashboard"
+    },
+    {"id": "w5", "name": "Week 5", "start": "2026-09-28", "end": "2026-10-03"},
+    {"id": "w6", "name": "Week 6", "start": "2026-10-05", "end": "2026-10-10"},
+    {
+      "id": "w7",
+      "name": "Week 7",
+      "start": "2026-10-12",
+      "end": "2026-10-17",
+      "note": "Start validation of everything up to week 6 on the real robot"
+    },
+    {
+      "id": "w8",
+      "name": "Week 8",
+      "start": "2026-10-19",
+      "end": "2026-10-24",
+      "note": "19/10 + 22-24/10 only. Start validation up to week 7 on the real robot"
+    },
+    {"id": "w9", "name": "Week 9", "start": "2026-10-26", "end": "2026-10-31", "note": "Carry-overs"},
+    {"id": "w10", "name": "Week 10", "start": "2026-11-02", "end": "2026-11-07", "note": "EOW 10 handover!"},
+    {"id": "w11", "name": "Week 11", "start": "2026-11-09", "end": "2026-11-14"},
+    {"id": "w12", "name": "Week 12", "start": "2026-11-16", "end": "2026-11-21", "note": "Optional buffer"}
+  ],
+  "people": [
+    {
+      "id": "clay",
+      "name": "Clay",
+      "color": "#FDEA9B",
+      "fg": "#3a2f00",
+      "leave": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18",
+        "2026-10-01",
+        "2026-10-03",
+        "2026-10-05",
+        "2026-10-06",
+        "2026-10-07",
+        "2026-10-08",
+        "2026-10-09",
+        "2026-10-10",
+        "2026-11-11",
+        "2026-11-12",
+        "2026-11-13"
+      ]
+    },
+    {
+      "id": "hari",
+      "name": "Hari",
+      "color": "#FA551E",
+      "fg": "#2a0a00",
+      "leave": ["2026-09-09", "2026-09-10", "2026-09-11", "2026-11-11"]
+    },
+    {"id": "gideon", "name": "Gideon", "color": "#C8AFF0", "fg": "#241338"},
+    {"id": "unbox", "name": "unbox (team)", "color": "#ec0808", "fg": "#ffffff", "hidden": true},
+    {"id": "thirdparty", "name": "third-party", "color": "#3CBEFC", "fg": "#00253a", "scheduling": "fixed"}
+  ],
+  "areas": [
+    "Platform",
+    "Sim",
+    "Hardware",
+    "Teleop",
+    "Mapping",
+    "Localisation",
+    "Navigation",
+    "Docking",
+    "Dashboard",
+    "HMI",
+    "Ops"
+  ],
+  "flags": {"needs-robot": {"label": "needs the robot"}},
+  "tasks": [
+    {
+      "id": "t1",
+      "title": "Create repo with clean setup",
+      "owner": "clay",
+      "week": "w1",
+      "subtasks": [
+        "skeletal structure",
+        "basic scons {will need rework}",
+        "basic proto files",
+        "setup script and uv setup",
+        "docker container structure (sim and core)",
+        "third-party dependency split (aarch64 vs amd64)",
+        "pre-built binaries for third-parties",
+        "hello world examples for claude to structure",
+        "single entry point: dummy",
+        "monitor tool and other utilities to replace echo",
+        "rust setup and deps",
+        "vite setup and deps",
+        "mono repo (carto server, sim, core, single dashboard)",
+        "node base class based approach {kept for core nodes: logger and transport}",
+        "daq + process manager structure stays as-is; replay utility consumes the log file to time-sync it",
+        "cloud sync to AWS bucket, mapping server interfaces with AWS directly"
+      ],
+      "area": "Platform",
+      "outcome": "repo, build, containers and the single dummy entry point stand up"
+    },
+    {
+      "id": "t2",
+      "title": "SIM",
+      "owner": "hari",
+      "week": "w1",
+      "subtasks": [
+        "migration to v6.0 {replicate current sim in 6 to understand feasibility and core working}",
+        "sim.poc.py, sim.validate.py",
+        "sensor setup {acoustic to replace current ultrasonic model}",
+        "sim.py picked up once repo setup is done",
+        "sim.py implements bare-minimum APIs for drive control; additional APIs handled later if needed",
+        "validate controls"
+      ],
+      "area": "Sim",
+      "outcome": "sim v6 drives the robot with modelled sensors"
+    },
+    {
+      "id": "t3",
+      "title": "State estimation",
+      "owner": "hari",
+      "week": "w2",
+      "subtasks": ["EKF node creation", "porting from robot_localization", "testing with sim, then real data"],
+      "area": "Localisation",
+      "outcome": "EKF fuses odometry and IMU"
+    },
+    {
+      "id": "t4",
+      "title": "Mapping server infrastructure",
+      "owner": "clay",
+      "week": "w2",
+      "subtasks": [
+        "storing data and fetching",
+        "server side setup",
+        "comms/transports",
+        "bridge between robot",
+        "validate data syncing"
+      ],
+      "area": "Mapping",
+      "outcome": "mapping server stores and serves runs over a robot bridge"
+    },
+    {
+      "id": "t5",
+      "title": "Implement gamepad teleoperation",
+      "owner": "gideon",
+      "week": "w2",
+      "area": "Teleop",
+      "outcome": "gamepad teleop drives the bot"
+    },
+    {
+      "id": "t6",
+      "title": "Infra for single dashboard UI (on-board robot)",
+      "owner": "clay",
+      "week": "w2",
+      "subtasks": [
+        "camera stream over webtransport {viz}",
+        "lidar stream over webtransport {viz}",
+        "ultrasonics stream over webtransport {viz}",
+        "monitoring utility and indicators",
+        "virtual joystick teleop for mobile devices"
+      ],
+      "area": "Dashboard",
+      "outcome": "on-board dashboard streams camera, lidar and ultrasonics"
+    },
+    {
+      "id": "t7",
+      "title": "Validate data collection and viewing on mapping server",
+      "owner": "clay",
+      "week": "w2",
+      "area": "Mapping",
+      "outcome": "collected data is verified end to end"
+    },
+    {
+      "id": "t8",
+      "title": "Docs built in parallel",
+      "owner": "unbox",
+      "week": "w2",
+      "area": "Ops",
+      "outcome": "docs keep pace with the build"
+    },
+    {
+      "id": "t9",
+      "title": "Get april tag sim assets (pt.1)",
+      "owner": "hari",
+      "week": "w2",
+      "tag": "third-party dependency",
+      "area": "Docking",
+      "outcome": "april tag assets are in hand"
+    },
+    {
+      "id": "t10",
+      "title": "State estimation (overflow)",
+      "owner": "hari",
+      "week": "w3",
+      "area": "Localisation",
+      "outcome": "state estimation is settled"
+    },
+    {
+      "id": "t11",
+      "title": "Cartographer integration with mapping server",
+      "owner": "hari",
+      "week": "w3",
+      "subtasks": [
+        "cartographer core implementation",
+        "data feeding",
+        "export options",
+        "annotation utility",
+        "layering utility"
+      ],
+      "area": "Mapping",
+      "outcome": "cartographer builds, exports, annotates and layers maps",
+      "extendUntil": "2026-09-26"
+    },
+    {
+      "id": "t12",
+      "title": "Robot capability to download map",
+      "owner": "hari",
+      "week": "w3",
+      "area": "Mapping",
+      "outcome": "the robot can pull a map down"
+    },
+    {
+      "id": "t13",
+      "title": "Hardware wrapper refactoring (pt.1)",
+      "owner": "gideon",
+      "week": "w3",
+      "area": "Hardware",
+      "outcome": "sensor and actuator wrappers are rewritten"
+    },
+    {
+      "id": "t14",
+      "title": "Hardware wrapper refactoring (pt.2)",
+      "owner": "gideon",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "the wrapper rewrite is finished",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t15",
+      "title": "Hardware wrapper refactoring validation",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "wrappers are validated on the bot",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t16",
+      "title": "Skateboard wrapper",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "the skateboard base drives",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t17",
+      "title": "Viz validation on dashboard",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Dashboard",
+      "outcome": "live viz is verified against the real bot",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t18",
+      "title": "Stack on boot",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "the stack comes up on boot",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t19",
+      "title": "Set up robot compute with utilities and network",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "robot compute and network are provisioned",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t20",
+      "title": "Set up M.2 wifi card with antennae",
+      "owner": "clay",
+      "week": "w4",
+      "area": "Hardware",
+      "outcome": "the bot is on wifi",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t21",
+      "title": "Cartographer localisation",
+      "owner": "hari",
+      "week": "w4",
+      "area": "Localisation",
+      "outcome": "the bot localises against a built map"
+    },
+    {
+      "id": "t22",
+      "title": "Download map and localise on it {server-bot transports and utility}",
+      "owner": "hari",
+      "week": "w4",
+      "area": "Localisation",
+      "outcome": "the bot downloads a map and localises on it"
+    },
+    {
+      "id": "t23",
+      "title": "Localisation validation utility against ground truth via sim",
+      "owner": "hari",
+      "week": "w4",
+      "area": "Localisation",
+      "outcome": "localisation is measured against sim ground truth"
+    },
+    {
+      "id": "t24",
+      "title": "Global planner (pt.1)",
+      "owner": "clay",
+      "week": "w5",
+      "subtasks": [
+        "integration of hybrid A* search and route planning into navigation server",
+        "populating layered cost map - parsing map metadata",
+        "populating layered cost map - adding depth data source",
+        "populating layered cost map - integration with global planner",
+        "UI for p2p nav - displays planned route",
+        "UI for p2p nav - layered cost map",
+        "UI for p2p nav - live view of costmap"
+      ],
+      "area": "Navigation",
+      "outcome": "hybrid A* routes over a layered costmap, with p2p nav in the UI"
+    },
+    {
+      "id": "t25",
+      "title": "Integration of MPC or MPPI local planner (pt.1)",
+      "owner": "hari",
+      "week": "w5",
+      "subtasks": ["POCs for MPC and MPPI", "optimisation and solver library - casadi/acados", "adding JIT - numba/jax"],
+      "area": "Navigation",
+      "outcome": "a local planner is chosen and solvable in real time"
+    },
+    {
+      "id": "t26",
+      "title": "Robot HMI (pt.1)",
+      "owner": "gideon",
+      "week": "w5",
+      "subtasks": ["api", "ui scaffolding", "flow"],
+      "area": "HMI",
+      "outcome": "the robot HMI has its API and shell"
+    },
+    {
+      "id": "t27",
+      "title": "Integration of MPC or MPPI local planner (pt.2)",
+      "owner": "hari",
+      "week": "w6",
+      "area": "Navigation",
+      "outcome": "the local planner is integrated"
+    },
+    {
+      "id": "t28",
+      "title": "Testing local planner with hardware, with validation data",
+      "owner": "hari",
+      "week": "w6",
+      "area": "Navigation",
+      "outcome": "the local planner is proven on hardware",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t29",
+      "title": "Robot HMI (pt.2)",
+      "owner": "gideon",
+      "week": "w6",
+      "subtasks": ["api integration", "core logic", "flow validation"],
+      "area": "HMI",
+      "outcome": "the HMI is wired to the stack and its flows check out"
+    },
+    {
+      "id": "t30",
+      "title": "Global planner (pt.2)",
+      "owner": "clay",
+      "week": "w7",
+      "subtasks": [
+        "orchestration layer for global planner {points of interest, other heuristics, procedural logic}",
+        "global planner pt.1 overflow (if present)"
+      ],
+      "area": "Navigation",
+      "outcome": "the planner orchestrates points of interest and heuristics"
+    },
+    {
+      "id": "t31",
+      "title": "April tag and docking assets + integration in sim",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Docking",
+      "outcome": "the docking rig is modelled in sim"
+    },
+    {
+      "id": "t32",
+      "title": "Integration of april tag library in dummy",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Docking",
+      "outcome": "april tag detection runs inside dummy"
+    },
+    {
+      "id": "t33",
+      "title": "POC script to test april tag detection with feed from sim",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Docking",
+      "outcome": "tag detection is proven off a sim feed"
+    },
+    {
+      "id": "t34",
+      "title": "Docking orchestration flow and validation with sim",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Docking",
+      "outcome": "the docking flow is validated in sim"
+    },
+    {
+      "id": "t35",
+      "title": "Add API and integrate with global planner",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Docking",
+      "outcome": "docking is reachable through the planner API"
+    },
+    {
+      "id": "t36",
+      "title": "Update dummy dashboard UI to accommodate docking",
+      "owner": "hari",
+      "week": "w7",
+      "area": "Dashboard",
+      "outcome": "the dashboard covers docking"
+    },
+    {
+      "id": "t37",
+      "title": "Testing out full flow in sim",
+      "owner": "hari",
+      "week": "w8",
+      "area": "Ops",
+      "outcome": "the full flow has been exercised in sim"
+    },
+    {
+      "id": "t38",
+      "title": "VIO",
+      "owner": "clay",
+      "week": "w8",
+      "area": "Localisation",
+      "outcome": "visual odometry is in"
+    },
+    {
+      "id": "t39",
+      "title": "Fix what breaks",
+      "owner": "unbox",
+      "week": "w8",
+      "tag": "Clay + Hari + Gideon",
+      "area": "Ops",
+      "outcome": "what broke has been fixed"
+    },
+    {
+      "id": "t40",
+      "title": "Add support for robot IOs and misc.",
+      "owner": "hari",
+      "week": "w8",
+      "tag": "with Gideon",
+      "area": "Hardware",
+      "outcome": "robot IOs are supported",
+      "flags": ["needs-robot"]
+    },
+    {
+      "id": "t41",
+      "title": "Accommodate carry-overs",
+      "owner": "unbox",
+      "week": "w9",
+      "area": "Ops",
+      "outcome": "carry-overs are absorbed"
+    },
+    {
+      "id": "t42",
+      "title": "TEST TEST TEST",
+      "owner": "unbox",
+      "week": "w10",
+      "area": "Ops",
+      "outcome": "the system is under test"
+    },
+    {
+      "id": "t43",
+      "title": "EOW 10 handover!",
+      "owner": "unbox",
+      "week": "w10",
+      "milestone": true,
+      "area": "Ops",
+      "outcome": "the stack is handed over"
+    },
+    {
+      "id": "t44",
+      "title": "Buffer - carry-overs and testing",
+      "owner": "unbox",
+      "week": "w11",
+      "area": "Ops",
+      "outcome": "buffer for carry-overs and testing"
+    },
+    {
+      "id": "t45",
+      "title": "Optional buffer week",
+      "owner": "unbox",
+      "week": "w12",
+      "area": "Ops",
+      "outcome": "spare buffer week"
+    },
+    {
+      "id": "t46",
+      "title": "Testing robot HMI",
+      "owner": "gideon",
+      "area": "HMI",
+      "outcome": "the HMI is tested on the robot",
+      "flags": ["needs-robot"],
+      "week": "w9"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "lf3",
+      "name": "wk3",
+      "group": "Robot arrival",
+      "label": "Robot arrival — wk3",
+      "blurb": "Robot on the desk by end of week 3. The doc's order, moved only by availability.",
+      "docUrl": "https://wiki.dummy.com/doc/effort-breakdown-hardware-week-3-6SbAlnHfGq",
+      "marker": {"week": "w3", "label": "Robot arrives"},
+      "exclude": ["t46"]
+    },
+    {
+      "id": "lf8",
+      "name": "wk8",
+      "group": "Robot arrival",
+      "label": "Robot arrival — wk8",
+      "blurb": "Robot only lands in week 8, so bring-up waits for the week 9 block.",
+      "docUrl": "https://wiki.dummy.com/doc/effort-breakdown-hardware-week-8-z3tcgNN10n",
+      "marker": {"week": "w8", "label": "Robot arrives"},
+      "weekNotes": {
+        "w3": "No robot yet — wrapper pt.1 is desk work",
+        "w4": "Planner and HMI pulled forward; still no hardware",
+        "w7": "Sim work only; the robot is not here yet",
+        "w8": "Robot arrives",
+        "w9": "On the robot at last: bring-up, HMI testing, planner validation on hardware"
+      },
+      "layout": [
+        ["t1", "w1"],
+        ["t2", "w1"],
+        ["t3", "w2"],
+        ["t4", "w2"],
+        ["t5", "w2"],
+        ["t6", "w2"],
+        ["t7", "w2"],
+        ["t8", "w2"],
+        ["t9", "w2"],
+        ["t10", "w3"],
+        ["t11", "w3"],
+        ["t12", "w3"],
+        ["t13", "w3"],
+        ["t24", "w4"],
+        ["t26", "w4"],
+        ["t21", "w4"],
+        ["t22", "w4"],
+        ["t23", "w4"],
+        ["t25", "w5"],
+        ["t29", "w5"],
+        ["t27", "w6"],
+        ["t31", "w7"],
+        ["t32", "w7"],
+        ["t33", "w7"],
+        ["t34", "w7"],
+        ["t35", "w7"],
+        ["t36", "w7"],
+        ["t30", "w7"],
+        ["t38", "w8"],
+        ["t37", "w8"],
+        ["t39", "w8"],
+        ["t40", "w8"],
+        ["t14", "w9"],
+        ["t46", "w9"],
+        ["t15", "w9"],
+        ["t16", "w9"],
+        ["t17", "w9"],
+        ["t18", "w9"],
+        ["t19", "w9"],
+        ["t20", "w9"],
+        ["t28", "w9"],
+        ["t41", "w9"],
+        ["t42", "w10"],
+        ["t43", "w10"]
+      ]
+    }
+  ],
+  "defaultScenario": "lf3",
+  "settings": {"defaultView": "board", "saveDebounceMs": 700, "pollMs": 8000}
+}

@@ -1,0 +1,21 @@
+{
+  "project": {"id": "website", "title": "Website relaunch"},
+  "calendar": {
+    "workdays": ["mon", "tue", "wed", "thu", "fri"],
+    "holidays": ["2026-12-25", {"from": "2026-12-28", "to": "2026-12-31", "name": "Year-end shutdown"}]
+  },
+  "weeks": {"start": "2026-11-02", "count": 10, "length": 5, "notes": {"w4": "Design sign-off"}},
+  "people": [
+    {"id": "ana", "name": "Ana", "leave": ["2026-11-16..2026-11-18"]},
+    {"id": "ben", "name": "Ben"},
+    {"id": "agency", "name": "Agency", "scheduling": "fixed"}
+  ],
+  "areas": ["Design", "Build", "Launch"],
+  "tasks": [
+    {"id": "d1", "title": "Wireframes", "owner": "ana", "week": "w1", "area": "Design", "outcome": "the page structure is agreed", "subtasks": ["home", "pricing", "docs"]},
+    {"id": "d2", "title": "Visual design", "owner": "agency", "week": "w2", "area": "Design"},
+    {"id": "b1", "title": "Component library", "owner": "ben", "week": "w3", "effortDays": 8, "area": "Build"},
+    {"id": "b2", "title": "Pages", "owner": "ben", "week": "w5", "area": "Build"},
+    {"id": "l1", "title": "Launch", "owner": "ana", "week": "w10", "milestone": true, "start": "2027-01-04", "area": "Launch"}
+  ]
+}

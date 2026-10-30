@@ -1,0 +1,83 @@
+# nginx edge for the plan box: the plan board behind one hostname, on TLS.
+#
+# Rendered by the nginx image's envsubst at container start. ONLY the PLAN_*
+# names are substituted (NGINX_ENVSUBST_FILTER in compose.plan.yml) — without
+# that filter envsubst also eats nginx's own $host / $remote_addr / $scheme and
+# every proxied request arrives with blank headers.
+#
+# One hostname, one certificate, two backends:
+#
+#   /.well-known/acme-challenge/  -> the certbot webroot, on port 80
+#   /api/                         -> plan-api (the shared plan store)
+#   everything else               -> plan-ui  (the static bundles)
+#
+# Same origin for both, so the browser needs no CORS and the app can call /api
+# with a relative path — nothing about the hostname is baked into the bundle.
+
+# Docker's embedded DNS. Required because the backend is resolved PER REQUEST
+# rather than at startup.
+#
+# An `upstream` block resolves its members when nginx BOOTS and aborts if one
+# does not exist, so a plan-ui that is slow to build or start takes the whole
+# edge down with it, and the visible symptom is nginx crash-looping rather than
+# the thing that actually failed. Putting the address in a variable defers
+# resolution to request time: nginx serves, and a down backend is a 502 that
+# names itself.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${PLAN_SERVER_NAME};
+
+    # Left reachable so certbot can issue and renew over HTTP-01 without nginx
+    # ever having to stop.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${PLAN_SERVER_NAME};
+
+    ssl_certificate     /etc/letsencrypt/live/${PLAN_SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLAN_SERVER_NAME}/privkey.pem;
+
+    # Answered by the edge itself, so it stays true while plan-ui is rebuilding.
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    # The shared plan: every board edit is a PUT here, and every other browser
+    # picks it up on its next poll. No caching, ever — a cached GET would hand
+    # somebody a plan that has already moved on.
+    location /api/ {
+        set $plan_api "${PLAN_API_UPSTREAM}";
+        proxy_pass         http://$plan_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_cache        off;
+    }
+
+    location / {
+        set $plan_ui "${PLAN_UI_UPSTREAM}";
+        proxy_pass         http://$plan_ui;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}

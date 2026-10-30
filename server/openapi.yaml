@@ -1,0 +1,663 @@
+openapi: 3.0.3
+info:
+  title: Project planner — plan store API
+  version: 1.0.0
+  description: |
+    The shared store behind the project planner (`server/index.mjs`). It holds
+    three kinds of document, each a single JSON file in the data directory:
+
+    | Document | Endpoint | File |
+    | --- | --- | --- |
+    | The config every plan is built from | `/api/config` | `planner.config.json` (or `config.json` once edited in the app) |
+    | One plan per scenario | `/api/plans/{id}` | `<id>.json` |
+    | The sticky-note wall | `/api/notes` | `notes.json` |
+
+    ## Concurrency
+
+    Every write is a **compare-and-swap** on the document's version. Send the
+    version you last read as `baseVersion`:
+
+    - it matches → the write is stored and the new version comes back (`200`);
+    - it doesn't → nothing is written, and the `409` carries the **current**
+      document, so the client can merge its change in and retry. The browser
+      merges task by task (`src/lib/merge.js`), so two people editing
+      different tasks both keep their edits.
+
+    Plans and notes have an integer version that goes up by one per write; `0`
+    means "never stored", and a first write is accepted whatever `baseVersion`
+    says. The config's version is a content hash, so an edit to the file on
+    disk changes it too.
+
+    Writes to one document are serialised on the server; writes are atomic
+    (temp file + rename). There is no authentication: the API is meant to sit
+    behind the nginx edge on a trusted network.
+
+    All bodies are JSON, at most 8 MiB. Responses are `Cache-Control: no-store`.
+servers:
+  - url: /
+    description: Same origin as the app (nginx in docker, the Vite proxy in dev)
+  - url: http://localhost:3000
+    description: plan-api directly (`npm run api`)
+# No authentication: the store is meant to sit behind the nginx edge.
+security: []
+tags:
+  - name: health
+    description: Is the store up.
+  - name: config
+    description: The single document that describes the project.
+  - name: plans
+    description: One document per scenario, holding the live tasks and their dates.
+  - name: notes
+    description: The project-wide sticky-note wall.
+
+paths:
+  /api/health:
+    get:
+      tags: [health]
+      summary: Liveness check
+      operationId: health
+      responses:
+        '200':
+          description: The server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, example: true }
+
+  /api/config:
+    get:
+      tags: [config]
+      summary: Read the current config
+      description: |
+        The in-app edit if there is one (`source: app`), otherwise
+        `planner.config.json` from disk (`source: file`).
+      operationId: getConfig
+      responses:
+        '200':
+          description: The current config.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigDoc' }
+        '404':
+          description: No config file exists at `PLANNER_CONFIG` and none was saved from the app.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: The config file exists but is not valid JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      tags: [config]
+      summary: Save an edited config for everyone
+      description: |
+        Stored as `config.json` in the data directory; it wins over the file on
+        disk until `DELETE /api/config`. The server only checks that `people`
+        and `tasks` are lists — full validation happens in the app
+        (or `npm run check-config`) before saving.
+      operationId: putConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseVersion, config]
+              properties:
+                baseVersion:
+                  type: string
+                  description: The `version` from the last `GET /api/config`.
+                  example: eb3b14831712
+                config: { $ref: '#/components/schemas/Config' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigSaved' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Someone changed the config since `baseVersion`. Nothing was written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, current]
+                properties:
+                  error: { type: string, example: version conflict }
+                  current: { $ref: '#/components/schemas/ConfigDoc' }
+        '413':
+          $ref: '#/components/responses/TooLarge'
+    delete:
+      tags: [config]
+      summary: Drop the in-app edit and go back to the file
+      operationId: revertConfig
+      responses:
+        '200':
+          description: |
+            The config now in effect (from the file), or `{ "version": null }`
+            if there is no file either.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ConfigDoc'
+                  - type: object
+                    properties:
+                      version: { type: string, nullable: true, example: null }
+
+  /api/plans/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: A scenario id from the config (`scenarios[].id`). `config` and `notes` are reserved.
+        schema:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{0,31}$'
+          example: lf3
+    get:
+      tags: [plans]
+      summary: Read a plan
+      operationId: getPlan
+      responses:
+        '200':
+          description: The stored plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanDoc' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: |
+            Never stored. The server cannot build a plan itself — the first
+            browser to open the scenario seeds it from the config and saves it
+            with `baseVersion: 0`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      tags: [plans]
+      summary: Save a plan
+      description: |
+        Replaces the whole plan document. `checkpoints`, `trash` and `meta`
+        default to empty when omitted.
+      operationId: putPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanPut' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Saved' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Someone saved since `baseVersion`. Nothing was written; merge with `current` and retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, current]
+                properties:
+                  error: { type: string, example: version conflict }
+                  current: { $ref: '#/components/schemas/PlanDoc' }
+        '413':
+          $ref: '#/components/responses/TooLarge'
+
+  /api/notes:
+    get:
+      tags: [notes]
+      summary: Read the note wall
+      description: Never 404s — a wall that was never saved comes back empty at version 0.
+      operationId: getNotes
+      responses:
+        '200':
+          description: The wall.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotesDoc' }
+    put:
+      tags: [notes]
+      summary: Save the note wall
+      operationId: putNotes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseVersion, notes]
+              properties:
+                baseVersion: { type: integer, minimum: 0, example: 18 }
+                notes:
+                  type: array
+                  items: { $ref: '#/components/schemas/Note' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Saved' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Someone saved since `baseVersion`. Nothing was written; merge with `current` and retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, current]
+                properties:
+                  error: { type: string, example: version conflict }
+                  current: { $ref: '#/components/schemas/NotesDoc' }
+        '413':
+          $ref: '#/components/responses/TooLarge'
+
+components:
+  responses:
+    BadRequest:
+      description: The body is not JSON, a required list is missing, or the id is invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            notJson: { value: { error: body is not JSON } }
+            noTasks: { value: { error: tasks must be an array } }
+            badId: { value: { error: bad plan id } }
+    TooLarge:
+      description: The body is over 8 MiB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: body too large }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Date:
+      type: string
+      format: date
+      description: A calendar day, `YYYY-MM-DD`. No times, no timezones.
+      example: '2026-09-15'
+
+    Saved:
+      type: object
+      required: [version, updatedAt]
+      properties:
+        version: { type: integer, example: 4 }
+        updatedAt: { type: string, format: date-time }
+
+    # ---------------------------------------------------------------- config
+    ConfigDoc:
+      type: object
+      required: [version, source, config]
+      properties:
+        version:
+          type: string
+          description: Content hash of `config`. Send it back as `baseVersion` when saving.
+          example: eb3b14831712
+        source:
+          type: string
+          enum: [file, app]
+          description: '`file` = planner.config.json on disk; `app` = saved from the Settings page.'
+        updatedAt:
+          type: string
+          format: date-time
+          description: The file's modification time, or when it was saved from the app.
+        config: { $ref: '#/components/schemas/Config' }
+
+    ConfigSaved:
+      type: object
+      properties:
+        version: { type: string, example: 9c1f0e2ab774 }
+        source: { type: string, enum: [app] }
+        updatedAt: { type: string, format: date-time }
+
+    Config:
+      type: object
+      description: The whole project. Field-by-field reference in `CONFIG.md`.
+      required: [people, tasks, weeks]
+      properties:
+        project:
+          type: object
+          properties:
+            id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,31}$', example: unbox }
+            title: { type: string, example: unbox — hardware effort breakdown }
+            docUrl: { type: string, format: uri }
+        calendar:
+          type: object
+          properties:
+            workdays:
+              type: array
+              items:
+                oneOf:
+                  - { type: string, enum: [sun, mon, tue, wed, thu, fri, sat] }
+                  - { type: integer, minimum: 0, maximum: 6 }
+              example: [mon, tue, wed, thu, fri, sat]
+            holidays:
+              type: array
+              items: { $ref: '#/components/schemas/DateSpec' }
+            weekEffortDays: { type: integer, minimum: 1, example: 6 }
+            blockWeeks: { type: integer, minimum: 1, example: 2 }
+            timeline:
+              type: object
+              properties:
+                start: { $ref: '#/components/schemas/Date' }
+                end: { $ref: '#/components/schemas/Date' }
+        weeks:
+          oneOf:
+            - type: array
+              items: { $ref: '#/components/schemas/Week' }
+            - type: object
+              description: Generator for regular weeks.
+              required: [start, count]
+              properties:
+                start: { $ref: '#/components/schemas/Date' }
+                count: { type: integer, minimum: 1 }
+                length: { type: integer, minimum: 1, default: 7 }
+                prefix: { type: string, default: Week }
+                notes:
+                  type: object
+                  additionalProperties: { type: string }
+        people:
+          type: array
+          items: { $ref: '#/components/schemas/Person' }
+        areas:
+          type: array
+          items: { type: string }
+        flags:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              label: { type: string }
+          example: { needs-robot: { label: needs the robot } }
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/ConfigTask' }
+        scenarios:
+          type: array
+          items: { $ref: '#/components/schemas/Scenario' }
+        defaultScenario: { type: string, example: lf3 }
+        settings:
+          type: object
+          properties:
+            defaultView: { type: string, enum: [board, calendar, gantt, leavefirst, notes, settings] }
+            saveDebounceMs: { type: integer, default: 700 }
+            pollMs: { type: integer, default: 8000 }
+
+    DateSpec:
+      description: A day, a `from..to` range, or an object with an optional name.
+      oneOf:
+        - type: string
+          example: '2026-12-24..2026-12-31'
+        - type: object
+          required: [date]
+          properties:
+            date: { $ref: '#/components/schemas/Date' }
+            name: { type: string, example: Diwali }
+        - type: object
+          required: [from, to]
+          properties:
+            from: { $ref: '#/components/schemas/Date' }
+            to: { $ref: '#/components/schemas/Date' }
+            name: { type: string }
+
+    Week:
+      type: object
+      required: [start]
+      properties:
+        id: { type: string, example: w3 }
+        name: { type: string, example: Week 3 }
+        start: { $ref: '#/components/schemas/Date' }
+        end: { $ref: '#/components/schemas/Date' }
+        note: { type: string }
+
+    Person:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, example: hari }
+        name: { type: string, example: Hari }
+        color: { type: string, example: '#FA551E' }
+        fg: { type: string, example: '#2a0a00' }
+        leave:
+          type: array
+          items: { $ref: '#/components/schemas/DateSpec' }
+        scheduling:
+          type: string
+          enum: [availability, fixed]
+          default: availability
+        hidden: { type: boolean, default: false }
+
+    ConfigTask:
+      type: object
+      required: [id, title, owner]
+      properties:
+        id: { type: string, example: t11 }
+        title: { type: string, example: Cartographer integration with mapping server }
+        owner: { type: string, example: hari }
+        week: { type: string, example: w3 }
+        subtasks:
+          type: array
+          items: { type: string }
+        effortDays: { type: number, minimum: 1 }
+        start: { $ref: '#/components/schemas/Date' }
+        end: { $ref: '#/components/schemas/Date' }
+        extendUntil: { $ref: '#/components/schemas/Date' }
+        area: { type: string, example: Mapping }
+        outcome: { type: string }
+        flags:
+          type: array
+          items: { type: string }
+        tag: { type: string }
+        milestone: { type: boolean }
+        notes: { type: string }
+
+    Scenario:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,31}$', example: lf8 }
+        name: { type: string, example: wk8 }
+        group: { type: string, example: Robot arrival }
+        label: { type: string }
+        blurb: { type: string }
+        docUrl: { type: string, format: uri }
+        marker:
+          type: object
+          properties:
+            week: { type: string }
+            date: { $ref: '#/components/schemas/Date' }
+            label: { type: string, example: Robot arrives }
+        weekNotes:
+          type: object
+          additionalProperties: { type: string }
+        layout:
+          type: array
+          description: The scenario's own order — `[id, week]`, `"id"` or `{ id, week }`.
+          items:
+            oneOf:
+              - type: array
+                items: { type: string }
+                minItems: 1
+                maxItems: 2
+              - type: string
+              - type: object
+                properties:
+                  id: { type: string }
+                  week: { type: string }
+        exclude:
+          type: array
+          items: { type: string }
+        overrides:
+          type: object
+          additionalProperties:
+            type: object
+        add:
+          type: array
+          items: { $ref: '#/components/schemas/ConfigTask' }
+
+    # ----------------------------------------------------------------- plans
+    PlanPut:
+      type: object
+      required: [baseVersion, tasks]
+      properties:
+        baseVersion:
+          type: integer
+          minimum: 0
+          description: The `version` last read, or `0` to create the plan.
+          example: 3
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        checkpoints: { $ref: '#/components/schemas/Checkpoints' }
+        trash:
+          type: array
+          items: { $ref: '#/components/schemas/TrashedTask' }
+        meta: { $ref: '#/components/schemas/PlanMeta' }
+
+    PlanDoc:
+      type: object
+      required: [version, updatedAt, tasks]
+      properties:
+        version: { type: integer, example: 4 }
+        updatedAt: { type: string, format: date-time }
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        checkpoints: { $ref: '#/components/schemas/Checkpoints' }
+        trash:
+          type: array
+          items: { $ref: '#/components/schemas/TrashedTask' }
+        meta: { $ref: '#/components/schemas/PlanMeta' }
+
+    Task:
+      type: object
+      description: |
+        A task as it lives on the boards. Config tasks keep their config `id`;
+        tasks made in the app get ids starting with `n`.
+      required: [id, title, owner]
+      properties:
+        id: { type: string, example: t3 }
+        title: { type: string, example: State estimation }
+        owner: { type: string, example: hari }
+        week: { type: string, description: The planned week., example: w2 }
+        start:
+          type: string
+          format: date
+          nullable: true
+          description: First day; null when unscheduled.
+          example: '2026-09-07'
+        end:
+          type: string
+          format: date
+          nullable: true
+          description: Last day (inclusive); null when unscheduled.
+          example: '2026-09-07'
+        effortDays:
+          type: number
+          description: Working days the task is worth; keeps its length when it is moved.
+          example: 6
+        configEffort: { type: number, description: '`effortDays` as written in the config.' }
+        done: { type: boolean }
+        order: { type: number, description: Position within a board column. }
+        subtasks:
+          type: array
+          items:
+            type: object
+            required: [title, done]
+            properties:
+              title: { type: string }
+              done: { type: boolean }
+        notes: { type: string }
+        tag: { type: string }
+        milestone: { type: boolean }
+        flags:
+          type: array
+          items: { type: string }
+        area: { type: string }
+        outcome: { type: string }
+        extendUntil: { $ref: '#/components/schemas/Date' }
+        pinned: { type: boolean, description: Dates come from the config; Redraw leaves the task alone. }
+      additionalProperties: true
+
+    TrashedTask:
+      allOf:
+        - $ref: '#/components/schemas/Task'
+        - type: object
+          properties:
+            deletedAt: { type: string, format: date-time }
+            reason: { type: string, example: removed from config }
+
+    Checkpoints:
+      type: object
+      description: Notes on a week (`w3`) or a checkpoint block (`f2`), keyed by its id.
+      additionalProperties:
+        type: object
+        properties:
+          expected:
+            type: string
+            nullable: true
+            description: Edited "expected state" text; null means compile it from the plan.
+          status:
+            type: string
+            enum: ['', on-track, at-risk, slipped, done]
+          note: { type: string }
+      example:
+        f2: { status: at-risk, note: wrapper rewrite slipped two days }
+
+    PlanMeta:
+      type: object
+      nullable: true
+      description: Bookkeeping for syncing the plan with the config. Written by the app; treat as opaque.
+      properties:
+        configVersion: { type: string, description: Hash of the config the plan last synced with. }
+        snapshot:
+          type: object
+          description: What the config said about each task at that sync, keyed by task id.
+          additionalProperties: { type: object }
+
+    # ----------------------------------------------------------------- notes
+    NotesDoc:
+      type: object
+      required: [version, notes]
+      properties:
+        version: { type: integer, example: 18 }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        notes:
+          type: array
+          items: { $ref: '#/components/schemas/Note' }
+
+    Note:
+      type: object
+      required: [id, author, body]
+      properties:
+        id: { type: string, example: kmn2p3yab12 }
+        author:
+          type: string
+          description: A person id, or `all` for a note that belongs to everyone.
+          example: hari
+        body: { type: string, description: Markdown., example: "- [ ] order the M.2 wifi card" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        float:
+          type: object
+          description: Where an `all` note floats on screen, shared by everyone.
+          properties:
+            x: { type: number }
+            y: { type: number }

@@ -1,0 +1,4 @@
+# The build needs devops/docker/static-site.conf, so devops/ is NOT ignored.
+node_modules
+dist
+.git

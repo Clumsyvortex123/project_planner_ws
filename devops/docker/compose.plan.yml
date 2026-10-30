@@ -1,0 +1,103 @@
+# The plan board in one file: the static bundles, a TLS edge, and renewal.
+#
+#   cd devops/docker
+#   docker compose -f compose.plan.yml up -d --build
+#
+# Modelled on fleet_manager's compose.fleet.yml, minus what this app does not
+# have: there is no database and no cache. The store is a handful of JSON files
+# on a volume, which is all a plan shared by three people needs.
+#
+# Config comes from devops/docker/.env; see .env.plan.example.
+# Required before the first `up`:
+#   PLAN_SERVER_NAME    the hostname this box answers on
+#   a certificate at /etc/letsencrypt/live/$PLAN_SERVER_NAME/  (see the README
+#   for the one-off certbot run that issues it)
+
+services:
+  # The shared plan store. One JSON document per plan on the volume below, which
+  # is the whole of this deployment's state — `docker cp` it and that is a backup.
+  plan-api:
+    build:
+      context: ../..
+      dockerfile: devops/docker/Dockerfile
+      target: api-runner
+    image: plan-api:local
+    container_name: plan-api
+    # Loopback only; the edge reaches it by service name over the network below.
+    ports:
+      - "127.0.0.1:${PLAN_API_HOST_PORT:-3001}:3000"
+    volumes:
+      - plan_data:/data
+      # The single config document. Edit it on the host and every board picks
+      # it up within a poll; an edit saved from the app's Settings page is kept
+      # on the volume and wins until "Revert to file". (Some editors replace the
+      # file rather than rewrite it, which a single-file mount does not follow —
+      # if a change is not seen, `docker compose restart plan-api`.)
+      - ../../planner.config.json:/app/planner.config.json:ro
+    networks:
+      - plan-network
+    restart: unless-stopped
+
+  plan-ui:
+    build:
+      context: ../..
+      dockerfile: devops/docker/Dockerfile
+      target: static-runner
+    image: plan-ui:local
+    container_name: plan-ui
+    # Loopback only. The edge reaches this by service name over the network
+    # below; this publish exists purely for `curl` from the host, and for
+    # running the app on a box that has no certificate yet.
+    ports:
+      - "127.0.0.1:${PLAN_UI_HOST_PORT:-8080}:80"
+    networks:
+      - plan-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx-plan
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PLAN_SERVER_NAME: ${PLAN_SERVER_NAME}
+      # A service name, not 127.0.0.1 — inside this container loopback is the
+      # container itself. The port is the CONTAINER port, not the published one.
+      PLAN_UI_UPSTREAM: ${PLAN_UI_UPSTREAM:-plan-ui:80}
+      PLAN_API_UPSTREAM: ${PLAN_API_UPSTREAM:-plan-api:3000}
+      # Without this filter envsubst also replaces nginx's own $host,
+      # $remote_addr and $scheme with empty strings, and every proxied request
+      # arrives with blank headers. It is an allowlist of NAMES: a variable the
+      # template uses but this pattern misses survives as the literal text
+      # `${NAME}`, which nginx then refuses to parse.
+      NGINX_ENVSUBST_FILTER: "^PLAN_"
+    volumes:
+      - ../nginx/templates/plan.conf.template:/etc/nginx/templates/plan.conf.template:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    networks:
+      - plan-network
+    # No depends_on: the template resolves the backend per request, so nginx
+    # serves (and returns an honest 502) while plan-ui is still building.
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot-plan
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    # Twice a day, certbot's own recommendation; it exits immediately when the
+    # certificate is not near expiry. Renews over the webroot, so nginx never
+    # has to stop.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    restart: unless-stopped
+
+networks:
+  plan-network:
+    driver: bridge
+
+volumes:
+  # Every plan, every week note. The only state on the box.
+  plan_data:
