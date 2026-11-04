@@ -1,0 +1,11 @@
+# Watches for a board's "Update now": plan-api writes request.json into the
+# shared updates directory, and this starts planner-updater.service.
+[Unit]
+Description=Watch for planner update requests
+
+[Path]
+PathExists=/home/ubuntu/planner-updates/request.json
+Unit=planner-updater.service
+
+[Install]
+WantedBy=multi-user.target

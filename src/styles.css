@@ -552,3 +552,12 @@ h4 .tick { margin-right: 5px; }
 }
 .update-card h3 { margin: 0 0 6px; font-size: 15px; }
 .update-card .row { justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.update-card { width: min(520px, 100%); }
+.update-notes {
+  max-height: 180px; overflow: auto; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); font-size: 11px; line-height: 1.45; white-space: pre-wrap; color: var(--muted);
+}
+.update-card .warn { margin: 8px 0 0; }
+.update-progress { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+.update-progress span { display: block; height: 100%; width: 30%; background: #58a6ff; animation: update-slide 1.4s ease-in-out infinite; }
+@keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }

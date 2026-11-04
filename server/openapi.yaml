@@ -49,6 +49,11 @@ tags:
     description: One document per scenario, holding the live tasks and their dates.
   - name: notes
     description: The project-wide sticky-note wall.
+  - name: release
+    description: >-
+      New versions from GitHub releases. The board polls `GET /api/release`; "Update now"
+      calls `POST /api/release/update`, which hands the deploy to the host updater
+      (devops/updater/). Without an updater installed, updates are reported but cannot be started.
 
 paths:
   /api/health:
@@ -213,6 +218,47 @@ paths:
                   current: { $ref: '#/components/schemas/PlanDoc' }
         '413':
           $ref: '#/components/responses/TooLarge'
+
+  /api/release:
+    get:
+      tags: [release]
+      operationId: getRelease
+      summary: The running version, the latest GitHub release, and the updater's state
+      description: GitHub is asked at most once per `RELEASE_TTL_MS` (10 minutes by default).
+      responses:
+        '200':
+          description: Release information.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReleaseInfo' }
+
+  /api/release/update:
+    post:
+      tags: [release]
+      operationId: requestUpdate
+      summary: Ask the host updater to deploy the latest release
+      description: >-
+        Only a request: the updater re-reads GitHub itself and deploys whatever is the latest
+        published release, to every planner on the server. Poll `GET /api/release` for progress.
+      responses:
+        '202':
+          description: Requested (or already in progress).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReleaseInfo' }
+        '409':
+          description: Already on the latest release.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/ReleaseInfo'
+        '501':
+          description: No updater is installed on this server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /api/notes:
     get:
@@ -633,6 +679,40 @@ components:
           additionalProperties: { type: object }
 
     # ----------------------------------------------------------------- notes
+    ReleaseInfo:
+      type: object
+      required: [repo, current, latest, updateAvailable, updater]
+      properties:
+        repo: { type: string, example: Clumsyvortex123/project_planner_ws }
+        current: { type: string, nullable: true, description: The version this server runs., example: 0.2.0 }
+        latest:
+          type: object
+          nullable: true
+          description: GitHub's latest published release; null if there is none.
+          required: [tag, version]
+          properties:
+            tag: { type: string, example: v0.3.0 }
+            version: { type: string, example: 0.3.0 }
+            name: { type: string }
+            url: { type: string, format: uri }
+            publishedAt: { type: string, format: date-time }
+            notes: { type: string, description: "The release notes (Markdown), cut at 4000 characters." }
+        updateAvailable: { type: boolean }
+        error: { type: string, nullable: true, description: "Why GitHub could not be read, if it could not." }
+        updater:
+          type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean, description: Whether a host updater is installed. }
+            state: { type: string, enum: [idle, requested, updating, done, failed] }
+            target: { type: string, nullable: true, example: 0.3.0 }
+            message: { type: string }
+            at: { type: string, format: date-time }
+            versions:
+              type: object
+              additionalProperties: { type: string }
+              description: The version each planner checkout on the server runs.
+            repo: { type: string }
     NotesDoc:
       type: object
       required: [version, notes]

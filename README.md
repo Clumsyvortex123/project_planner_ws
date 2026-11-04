@@ -79,12 +79,18 @@ Every edit is stored on the server, so everyone sees the same plan:
 
 ## New releases
 
-Each build writes `version.json` next to `index.html` and bakes the same build id
-into the bundle. Open tabs check it every minute and whenever they come back into
-view. Nothing shows until a different build is deployed; then the page blurs and
-offers **Update now** (reloads, once any pending save has gone out) or **Later**
-(silent until the next release). Bump `version` in `package.json` to show a
-version number in the prompt; set `PLANNER_BUILD_ID` at build time to control the id.
+Publish a GitHub release and every open board offers it. The page blurs and shows
+**"v0.3.0 is available"** with the release notes. **Update now** has the server pull
+that release and redeploy itself, keeping its config and data. When the new build
+is live, every board offers **Reload now**. Nothing shows when there is nothing new.
+
+- **Releasing:** bump `package.json` (`npm version X.Y.Z --no-git-tag-version`),
+  commit, tag `vX.Y.Z`, push, then publish the GitHub release. Its notes are shown
+  in the prompt.
+- **Deploying it** is done by a small host updater
+  ([`devops/updater/`](devops/updater/README.md)), installed once per server. Without
+  it, boards still notice a newly deployed build and offer a reload, but can't start
+  an update themselves.
 
 ## Layout
 
@@ -103,7 +109,7 @@ src/lib/store.jsx        plan sync loop (debounced save, poll, merge on conflict
 src/views/               Board, Calendar, Gantt, Availability, Notes, Settings
 availability/            standalone holidays-and-leave page, fed by the same model
 tools/check-config.mjs   validate a config from the command line
-devops/                  docker: nginx edge + TLS, static bundles, plan-api
+devops/                  docker: nginx edge + TLS, static bundles, plan-api; updater/ self-update
 ```
 
 ## Deploying

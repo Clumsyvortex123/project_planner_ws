@@ -1,0 +1,13 @@
+# Runs planner-updater.sh once. Started by planner-updater.path whenever a board
+# asks for an update. Install: see devops/updater/README.md.
+[Unit]
+Description=Deploy the latest planner release from GitHub
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+EnvironmentFile=/etc/planner-updater.env
+ExecStart=/home/ubuntu/planner-updater/planner-updater.sh
+TimeoutStartSec=30min

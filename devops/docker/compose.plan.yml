@@ -40,6 +40,13 @@ services:
       # file rather than rewrite it, which a single-file mount does not follow —
       # if a change is not seen, `docker compose restart plan-api`.)
       - ../../planner.config.json:/app/planner.config.json:ro
+      # Shared with the host updater (devops/updater/): "Update now" on a board
+      # writes request.json here, and the updater reports back in status.json.
+      # Unset, it points at an empty folder and the boards offer no update button.
+      - ${PLAN_UPDATE_DIR:-../../.updates}:/updates
+    environment:
+      UPDATE_DIR: /updates
+      RELEASE_REPO: ${RELEASE_REPO:-Clumsyvortex123/project_planner_ws}
     networks:
       - plan-network
     restart: unless-stopped

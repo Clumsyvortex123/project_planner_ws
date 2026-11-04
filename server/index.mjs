@@ -12,6 +12,8 @@
 //   DELETE /api/config       -> back to the file on disk
 //   GET  /api/plans/:id      -> { version, updatedAt, tasks, checkpoints, trash, meta }
 //   PUT  /api/plans/:id      -> { baseVersion, tasks, checkpoints, trash, meta }
+//   GET  /api/release        -> { current, latest, updater }   (GitHub releases)
+//   POST /api/release/update -> asks the host updater to deploy the latest release
 //   GET  /api/notes          -> { version, updatedAt, notes }
 //   PUT  /api/notes          -> { baseVersion, notes }
 //        200 with the new version, or 409 with the CURRENT document so the
@@ -39,6 +41,12 @@ const DATA_DIR = process.env.PLAN_DATA_DIR || '/data'
 const PORT = Number(process.env.PORT || 3000)
 const MAX_BODY = 8 * 1024 * 1024
 const CONFIG_FILE = resolve(process.env.PLANNER_CONFIG || 'planner.config.json')
+// Releases are read from GitHub; deploying one is the host updater's job
+// (devops/updater/), which watches UPDATE_DIR. No updater, no update button.
+const RELEASE_REPO = process.env.RELEASE_REPO || 'Clumsyvortex123/project_planner_ws'
+const UPDATE_DIR = process.env.UPDATE_DIR || '/updates'
+const RELEASE_TTL_MS = Number(process.env.RELEASE_TTL_MS || 10 * 60 * 1000)
+const HERE = dirname(fileURLToPath(import.meta.url))
 
 // Plan ids come from the app's own list, but this is a filename, so it is
 // validated rather than trusted.
@@ -129,7 +137,7 @@ async function put(res, id, body, build) {
 
 /* ---- API docs ---- */
 
-const SPEC_FILE = join(dirname(fileURLToPath(import.meta.url)), 'openapi.yaml')
+const SPEC_FILE = join(HERE, 'openapi.yaml')
 
 // Swagger UI from a CDN, pointed at the spec next to it. Pinned, like the app's
 // other dependencies, so the page cannot change under us.
@@ -205,6 +213,122 @@ async function handleConfig(req, res) {
   return res.end()
 }
 
+/* ---- releases -------------------------------------------------------------
+ * The version this server runs is the package.json it was built from. The
+ * newest release is GitHub's "latest" (published, not a draft or prerelease),
+ * cached so a room full of open tabs costs one GitHub call per TTL.
+ */
+
+let runningVersion = null
+async function currentVersion() {
+  if (runningVersion) return runningVersion
+  for (const p of [join(HERE, '..', 'package.json'), resolve('package.json')]) {
+    try {
+      runningVersion = JSON.parse(await readFile(p, 'utf8')).version
+      return runningVersion
+    } catch {
+      /* try the next */
+    }
+  }
+  return null
+}
+
+const cleanVersion = (tag) => String(tag || '').replace(/^v/i, '')
+/** Semver-ish compare of "1.2.3": >0 when a is newer. Non-numeric parts compare as 0. */
+export function compareVersions(a, b) {
+  const pa = cleanVersion(a).split(/[.-]/).map((n) => parseInt(n, 10) || 0)
+  const pb = cleanVersion(b).split(/[.-]/).map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length, 3); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d) return d
+  }
+  return 0
+}
+
+let releaseCache = { at: 0, latest: null, error: null }
+async function latestRelease() {
+  if (Date.now() - releaseCache.at < RELEASE_TTL_MS) return releaseCache
+  try {
+    const r = await fetch(`https://api.github.com/repos/${RELEASE_REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'project-planner-release-check' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (r.status === 404) releaseCache = { at: Date.now(), latest: null, error: null } // no releases yet
+    else if (!r.ok) throw new Error(`GitHub answered ${r.status}`)
+    else {
+      const j = await r.json()
+      releaseCache = {
+        at: Date.now(),
+        error: null,
+        latest: {
+          tag: j.tag_name,
+          version: cleanVersion(j.tag_name),
+          name: j.name || j.tag_name,
+          url: j.html_url,
+          publishedAt: j.published_at,
+          notes: String(j.body || '').slice(0, 4000),
+        },
+      }
+    }
+  } catch (err) {
+    // Keep the last good answer; try again after a short pause, not every request.
+    releaseCache = { ...releaseCache, at: Date.now() - RELEASE_TTL_MS + 60_000, error: err.message }
+  }
+  return releaseCache
+}
+
+/** The host updater's own report, or null when no updater is installed. */
+async function updaterStatus() {
+  let status
+  try {
+    status = JSON.parse(await readFile(join(UPDATE_DIR, 'status.json'), 'utf8'))
+  } catch {
+    return null
+  }
+  // Asked for, but the updater has not picked it up yet.
+  if (status.state !== 'updating') {
+    try {
+      const req = JSON.parse(await readFile(join(UPDATE_DIR, 'request.json'), 'utf8'))
+      return { ...status, state: 'requested', target: req.version, message: 'waiting for the updater to start' }
+    } catch {
+      /* no pending request */
+    }
+  }
+  return status
+}
+
+async function releaseInfo() {
+  const [current, rel, updater] = await Promise.all([currentVersion(), latestRelease(), updaterStatus()])
+  const latest = rel.latest
+  return {
+    repo: RELEASE_REPO,
+    current,
+    latest,
+    updateAvailable: !!(latest && current && compareVersions(latest.version, current) > 0),
+    error: rel.error,
+    updater: updater ? { enabled: true, ...updater } : { enabled: false },
+  }
+}
+
+async function handleRelease(req, res, url) {
+  if (url.pathname === '/api/release' && req.method === 'GET') return send(res, 200, await releaseInfo())
+  if (url.pathname === '/api/release/update' && req.method === 'POST') {
+    const info = await releaseInfo()
+    if (!info.updater.enabled) return send(res, 501, { error: 'no updater is installed on this server' })
+    if (!info.updateAvailable) return send(res, 409, { error: 'already on the latest release', ...info })
+    if (info.updater.state === 'updating' || info.updater.state === 'requested') return send(res, 202, info)
+    // Only a nudge: the updater re-reads GitHub itself and deploys whatever is
+    // latest there, so nothing in this request decides what code runs.
+    const request = { requestedAt: new Date().toISOString(), version: info.latest.version, site: req.headers.host || null }
+    const tmp = join(UPDATE_DIR, `request.json.${process.pid}.tmp`)
+    await writeFile(tmp, JSON.stringify(request) + '\n')
+    await rename(tmp, join(UPDATE_DIR, 'request.json'))
+    return send(res, 202, await releaseInfo())
+  }
+  res.writeHead(405, { Allow: url.pathname === '/api/release' ? 'GET' : 'POST' })
+  return res.end()
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
 
@@ -213,6 +337,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/docs' || url.pathname === '/api/docs/') return sendText(res, 'text/html; charset=utf-8', DOCS_HTML)
     if (url.pathname === '/api/openapi.yaml') return sendText(res, 'application/yaml; charset=utf-8', await readFile(SPEC_FILE, 'utf8'))
     if (url.pathname === '/api/config') return await handleConfig(req, res)
+    if (url.pathname === '/api/release' || url.pathname === '/api/release/update') return await handleRelease(req, res, url)
 
     // The sticky-note wall: one document, same discipline as a plan.
     if (url.pathname === '/api/notes') {

@@ -23,6 +23,8 @@ FROM node:22-alpine AS api-runner
 WORKDIR /app
 
 COPY server ./server
+# Only for its version: GET /api/release reports what this server runs.
+COPY package.json ./package.json
 # The default config. compose.plan.yml mounts the repo's copy over it, so editing
 # the file on the host is picked up without a rebuild.
 COPY planner.config.json ./planner.config.json
