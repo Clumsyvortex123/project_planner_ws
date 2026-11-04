@@ -1,3 +1,4 @@
 node_modules
 dist
 .data
+planner.config.json

@@ -1,16 +1,19 @@
 # Project planner
 
 A configurable version of the unbox plan board. **One document,
-[`planner.config.json`](planner.config.json), describes the whole project**:
+`planner.config.json`, describes the whole project**:
 people and their leave, workdays, holidays, weeks, every task, and any number of
 scenarios. The board, calendar, Gantt, availability lanes, week summaries and
 the standalone `/availability/` page are all built from it at runtime.
 
-It ships configured as the unbox hardware plan (both the week-3 and week-8 robot
-arrival docs). Its schedule is checked to match the original repo task for task.
-To plan something else, replace the config.
+`planner.config.json` is **not tracked by git** (it is in `.gitignore`): each
+deployment keeps its own plan. The repo ships
+[`planner.config.example.json`](planner.config.example.json), the unbox hardware
+plan (both the week-3 and week-8 robot arrival docs), as a starting point. Copy
+it, then replace its content with your project.
 
 ```bash
+cp planner.config.example.json planner.config.json   # once, then edit it
 npm install
 npm run check-config   # validate planner.config.json
 npm run api            # the shared store + config, on :3000, writing to .data/
@@ -86,7 +89,8 @@ version number in the prompt; set `PLANNER_BUILD_ID` at build time to control th
 ## Layout
 
 ```
-planner.config.json      the project — the only place plan content lives
+planner.config.json      the project — the only place plan content lives (untracked)
+planner.config.example.json  a complete example (the unbox plan) to copy from
 CONFIG.md                every config field
 examples/                a minimal config to start from
 server/index.mjs         plan + notes + config store (node, no dependencies)
@@ -105,10 +109,15 @@ devops/                  docker: nginx edge + TLS, static bundles, plan-api
 ## Deploying
 
 ```bash
+test -f planner.config.json || cp planner.config.example.json planner.config.json
 cd devops/docker
-cp .env.plan.example .env      # set PLAN_SERVER_NAME
-docker compose -f compose.plan.yml up -d --build
+cp .env.plan.example .env      # COMPOSE_PROJECT_NAME, PLAN_PORT, PLAN_SITES
+docker compose -f compose.plan.yml up -d --build   # this planner, on 127.0.0.1:$PLAN_PORT
+docker compose -f compose.edge.yml up -d           # once per box: hostname -> port, TLS
 ```
 
-Compose bind-mounts `planner.config.json` into `plan-api`, so editing it on the
-host needs no rebuild. See `devops/README.md`.
+Several planners can share a box: one checkout each, each with its own
+`COMPOSE_PROJECT_NAME` and `PLAN_PORT`, and one edge nginx whose `PLAN_SITES`
+maps every hostname to its planner's port. Compose bind-mounts
+`planner.config.json` into `plan-api`, so editing it on the host needs no
+rebuild. See `devops/README.md`.

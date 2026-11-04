@@ -13,8 +13,9 @@ npm run check-config -- examples/minimal.config.json  # any other file
 ```
 
 `examples/minimal.config.json` is a small complete config to start a new
-project from; `planner.config.json` is the unbox hardware plan, which exercises
-every field.
+project from; `planner.config.example.json` is the unbox hardware plan, which
+exercises every field. `planner.config.json` itself is untracked, so copy one of
+them to it to start.
 
 ## Where the document lives, and how changes reach the boards
 

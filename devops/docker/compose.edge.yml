@@ -1,0 +1,44 @@
+# The TLS edge for every planner on this box: one nginx on 80/443, one server
+# block per hostname, each proxied to that planner's loopback port.
+#
+#   cd devops/docker
+#   docker compose -f compose.edge.yml up -d
+#
+# Run it ONCE per box, from any one checkout; the planners themselves are
+# compose.plan.yml, once per planner. Which hostname goes to which planner is
+# PLAN_SITES in this directory's .env (see .env.plan.example):
+#
+#   PLAN_SITES="ubr.neuralpilot-dev.com=8080 osmos.neuralpilot-dev.com=8081"
+#
+# A planner is then added by appending to PLAN_SITES and recreating the edge
+# (`up -d --force-recreate nginx`) — nothing is rebuilt.
+
+name: plan-edge
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx-plan
+    # On the host network so it reaches each planner on 127.0.0.1:<port>, the
+    # same address you would curl. It also binds 80/443 directly.
+    network_mode: host
+    environment:
+      PLAN_SITES: ${PLAN_SITES:?set PLAN_SITES in .env, e.g. "plan.example.com=8080"}
+    volumes:
+      # Runs at every container start and writes one server pair per site.
+      - ../nginx/plan-sites.sh:/docker-entrypoint.d/40-plan-sites.sh:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot-plan
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    # Twice a day, certbot's own recommendation; it exits immediately when the
+    # certificate is not near expiry. Renews over the webroot, so nginx never
+    # has to stop.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    restart: unless-stopped
