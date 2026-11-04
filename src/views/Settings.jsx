@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ACTIVE_OWNERS, OWNER_BY_ID, PLANS, PROJECT, WEEKS, HOLIDAYS, TIMELINE_START, TIMELINE_END, formatConfig } from '../lib/model.js'
 import { useConfig } from '../lib/config.jsx'
 import { usePlan } from '../lib/store.jsx'
 import { label } from '../lib/dates.js'
 import { when } from '../components/NoteCard.jsx'
 import { RELEASE } from '../components/UpdatePrompt.jsx'
+import { compareVersions, fetchRelease, isBusy, onRelease, requestUpdate } from '../lib/release.js'
 
 const SOURCE_TEXT = {
   file: 'planner.config.json on the server',
@@ -201,12 +202,131 @@ function Overview() {
   )
 }
 
+const STATE_TEXT = {
+  idle: 'ready',
+  requested: 'update requested — waiting for the updater to start',
+  updating: 'updating',
+  done: 'last update finished',
+  failed: 'last update failed',
+}
+
+/** The running version, GitHub's latest release, and a way to install it. */
+function Updates() {
+  const [info, setInfo] = useState(null)
+  const [busy, setBusy] = useState(false) // a request from this panel is in flight
+  const [error, setError] = useState('')
+
+  useEffect(() => onRelease(setInfo), [])
+  const load = async (refresh = false) => {
+    setError('')
+    try {
+      await fetchRelease({ refresh })
+    } catch (err) {
+      setError(err.message === '404' ? 'This server has no release API (an older version).' : 'Could not reach the server.')
+    }
+  }
+  const deploying = isBusy(info)
+  useEffect(() => {
+    load()
+    const id = setInterval(load, deploying ? 5000 : 60_000)
+    return () => clearInterval(id)
+  }, [deploying])
+
+  const check = async () => {
+    setBusy(true)
+    await load(true)
+    setBusy(false)
+  }
+  const update = async () => {
+    if (!confirm(`Install v${info.latest.version} on this server for everyone? Boards keep working while it builds; everyone is offered a reload when it's live.`)) return
+    setBusy(true)
+    setError('')
+    try {
+      await requestUpdate()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const u = info?.updater
+  const latest = info?.latest
+  const failed = u?.state === 'failed'
+  return (
+    <section className="panel updates-panel">
+      <header className="panel-head">
+        <h3>Updates</h3>
+        <button className="link" disabled={busy || deploying} onClick={check} title="Ask GitHub now rather than wait for the next check">
+          {busy && !deploying ? 'checking…' : 'check now'}
+        </button>
+      </header>
+      {!info && !error && <p className="muted small">Checking…</p>}
+      {info && (
+        <dl className="overview">
+          <dt>Running</dt>
+          <dd>
+            v{info.current || '?'}
+            {compareVersions(info.current, RELEASE.version) > 0 && <span className="muted tiny"> (this tab: v{RELEASE.version} — reload to catch up)</span>}
+          </dd>
+          <dt>Latest</dt>
+          <dd>
+            {latest ? (
+              <>
+                <a href={latest.url} target="_blank" rel="noopener noreferrer">v{latest.version} ↗</a>
+                <span className="muted tiny"> released {new Date(latest.publishedAt).toLocaleDateString()}</span>
+              </>
+            ) : (
+              <span className="muted">no release published</span>
+            )}
+            <span className="muted tiny"> · checked {when(info.checkedAt)}</span>
+          </dd>
+          <dt>Updater</dt>
+          <dd>
+            {u?.enabled ? (
+              <>
+                {STATE_TEXT[u.state] || u.state}
+                {u.target && (deploying || failed) ? ` (v${u.target})` : ''}
+                {u.at && <span className="muted tiny"> · {when(u.at)}</span>}
+              </>
+            ) : (
+              <span className="muted">not installed on this server — see devops/updater/README.md</span>
+            )}
+          </dd>
+        </dl>
+      )}
+      {failed && u.message && <p className="warn small">{u.message}. The previous version is still running.</p>}
+      {deploying && (
+        <>
+          <p className="muted small">{u.message}… this takes a few minutes. Every board is offered a reload when it's live.</p>
+          <div className="update-progress" aria-hidden="true"><span /></div>
+        </>
+      )}
+      {error && <p className="warn small">{error}</p>}
+      {info && !deploying && (
+        <div className="row wrap">
+          {info.updateAvailable && u?.enabled ? (
+            <button className="ghost primary" disabled={busy} onClick={update}>
+              {failed && u.target === latest?.version ? 'Try again' : `Update to v${latest.version}`}
+            </button>
+          ) : info.updateAvailable ? (
+            <span className="muted small">v{latest.version} is available — install the updater to update from here.</span>
+          ) : (
+            latest && <span className="muted small">✓ Up to date</span>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function Settings({ onOpen, showFooter, setShowFooter }) {
   return (
     <div className="settings-wrap">
       <div className="settings-col">
         <Overview />
         <Trash onOpen={onOpen} />
+        <Updates />
       </div>
       <ConfigEditor />
       <label className="settings-fineprint muted tiny">

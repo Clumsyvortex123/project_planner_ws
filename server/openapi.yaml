@@ -225,6 +225,12 @@ paths:
       operationId: getRelease
       summary: The running version, the latest GitHub release, and the updater's state
       description: GitHub is asked at most once per `RELEASE_TTL_MS` (10 minutes by default).
+      parameters:
+        - name: refresh
+          in: query
+          required: false
+          description: Ask GitHub now instead of using the cached answer, if that is over a minute old.
+          schema: { type: boolean }
       responses:
         '200':
           description: Release information.
@@ -698,6 +704,7 @@ components:
             publishedAt: { type: string, format: date-time }
             notes: { type: string, description: "The release notes (Markdown), cut at 4000 characters." }
         updateAvailable: { type: boolean }
+        checkedAt: { type: string, format: date-time, description: When GitHub was last asked. }
         error: { type: string, nullable: true, description: "Why GitHub could not be read, if it could not." }
         updater:
           type: object

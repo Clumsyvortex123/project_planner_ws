@@ -572,3 +572,5 @@ h4 .tick { margin-right: 5px; }
 .update-progress { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 10px; }
 .update-progress span { display: block; height: 100%; width: 30%; background: #58a6ff; animation: update-slide 1.4s ease-in-out infinite; }
 @keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.updates-panel .update-progress { margin: 4px 0 8px; }
+.updates-panel .warn { margin: 6px 0; }

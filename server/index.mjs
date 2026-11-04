@@ -246,8 +246,10 @@ export function compareVersions(a, b) {
 }
 
 let releaseCache = { at: 0, latest: null, error: null }
-async function latestRelease() {
-  if (Date.now() - releaseCache.at < RELEASE_TTL_MS) return releaseCache
+const REFRESH_MIN_MS = 60_000 // "Check now" can skip the cache, but not more than once a minute
+async function latestRelease(refresh = false) {
+  const age = Date.now() - releaseCache.at
+  if (age < RELEASE_TTL_MS && !(refresh && age >= REFRESH_MIN_MS)) return releaseCache
   try {
     const r = await fetch(`https://api.github.com/repos/${RELEASE_REPO}/releases/latest`, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'project-planner-release-check' },
@@ -297,8 +299,8 @@ async function updaterStatus() {
   return status
 }
 
-async function releaseInfo() {
-  const [current, rel, updater] = await Promise.all([currentVersion(), latestRelease(), updaterStatus()])
+async function releaseInfo(refresh = false) {
+  const [current, rel, updater] = await Promise.all([currentVersion(), latestRelease(refresh), updaterStatus()])
   const latest = rel.latest
   return {
     repo: RELEASE_REPO,
@@ -307,11 +309,12 @@ async function releaseInfo() {
     updateAvailable: !!(latest && current && compareVersions(latest.version, current) > 0),
     error: rel.error,
     updater: updater ? { enabled: true, ...updater } : { enabled: false },
+    checkedAt: new Date(rel.at).toISOString(),
   }
 }
 
 async function handleRelease(req, res, url) {
-  if (url.pathname === '/api/release' && req.method === 'GET') return send(res, 200, await releaseInfo())
+  if (url.pathname === '/api/release' && req.method === 'GET') return send(res, 200, await releaseInfo(url.searchParams.has('refresh')))
   if (url.pathname === '/api/release/update' && req.method === 'POST') {
     const info = await releaseInfo()
     if (!info.updater.enabled) return send(res, 501, { error: 'no updater is installed on this server' })

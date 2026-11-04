@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { usePlan } from '../lib/store.jsx'
+import { fetchRelease, onRelease, requestUpdate as askForUpdate } from '../lib/release.js'
 
 /** The build this tab is running (set by vite.config.js). */
 export const RELEASE = typeof __PLANNER_RELEASE__ !== 'undefined' ? __PLANNER_RELEASE__ : { version: 'dev', build: 'dev' }
@@ -57,11 +58,13 @@ export function UpdatePrompt() {
   }, [])
   const checkRelease = useCallback(async () => {
     try {
-      setRelease(await getJson('/api/release'))
+      await fetchRelease() // announced; the listener below stores it
     } catch {
       /* no API (static preview) or mid-deploy */
     }
   }, [])
+  // Settings → Updates (or this prompt) fetched something: show the same state.
+  useEffect(() => onRelease(setRelease), [])
 
   const updaterState = release?.updater?.state
   const busy = updaterState === 'updating' || updaterState === 'requested'
@@ -93,9 +96,9 @@ export function UpdatePrompt() {
     setAsking(true)
     setError('')
     try {
-      setRelease(await getJson('/api/release/update', { method: 'POST' }))
+      await askForUpdate()
     } catch (err) {
-      setError(err.message === '501' ? 'This server has no updater installed.' : `The server refused (${err.message}).`)
+      setError(err.message)
       checkRelease()
     } finally {
       setAsking(false)
