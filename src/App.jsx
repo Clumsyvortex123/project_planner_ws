@@ -11,6 +11,8 @@ import { Settings } from './views/Settings.jsx'
 import { TaskDrawer } from './components/TaskDrawer.jsx'
 import { FloatingNotes } from './components/FloatingNotes.jsx'
 import { Reschedule } from './components/Reschedule.jsx'
+import { Footer, useFooterPref } from './components/Footer.jsx'
+import { UpdatePrompt } from './components/UpdatePrompt.jsx'
 import { NotesProvider, readAuthor, readFloating, useNotes, writeFloating } from './lib/notes.jsx'
 import { durationOf, effortDaysOf, progressOf } from './lib/schedule.js'
 
@@ -321,6 +323,8 @@ function Shell() {
     if (at) setFloating((f) => ({ ...f, [note.id]: at }))
   }
 
+  const [showFooter, setShowFooter] = useFooterPref()
+
   return (
     <div className="app">
       <ConfigBanner onSettings={() => setView('settings')} />
@@ -351,11 +355,13 @@ function Shell() {
             onAuthorChange={changeAuthor}
           />
         )}
-        {view === 'settings' && <Settings onOpen={setOpen} />}
+        {view === 'settings' && <Settings onOpen={setOpen} showFooter={showFooter} setShowFooter={setShowFooter} />}
       </main>
       <FloatingNotes floating={floating} setFloating={setFloating} onAuthorChange={changeAuthor} />
       {open && <TaskDrawer taskId={open} onClose={() => setOpen(null)} onOpen={setOpen} />}
       {rescheduling && <Reschedule filter={filter} onClose={() => setRescheduling(false)} />}
+      {showFooter && <Footer />}
+      <UpdatePrompt />
     </div>
   )
 }

@@ -242,6 +242,7 @@ export function PlanProvider({ children }) {
       trash: state.trash,
       checkpoints: state.checkpoints,
       sync: state.sync,
+      dirty: state.dirty,
       ripple: state.ripple,
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,

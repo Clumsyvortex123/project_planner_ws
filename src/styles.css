@@ -529,3 +529,26 @@ h4 .tick { margin-right: 5px; }
 @media (max-width: 900px) {
   .settings-wrap { grid-template-columns: 1fr; }
 }
+
+/* ---- settings fine print ---- */
+.settings-fineprint { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding-top: 8px; cursor: pointer; }
+.settings-fineprint input { margin: 0; }
+
+/* ---- "developed by" footer ---- */
+.credit { flex-shrink: 0; background: #000; border-top: 1px solid #161b22; height: 22px; display: flex; align-items: center; justify-content: center; }
+.credit a { display: inline-flex; align-items: center; gap: 6px; color: #8b949e; font-size: 11px; text-decoration: none; max-width: 100%; padding: 0 12px; }
+.credit a:hover { color: #e6edf3; }
+.credit a span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.credit img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+
+/* ---- new release prompt ---- */
+.update-veil {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+  background: rgba(1, 4, 9, 0.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.update-card {
+  width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.update-card h3 { margin: 0 0 6px; font-size: 15px; }
+.update-card .row { justify-content: flex-end; gap: 8px; margin-top: 12px; }

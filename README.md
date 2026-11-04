@@ -74,6 +74,15 @@ Every edit is stored on the server, so everyone sees the same plan:
   the app still renders and keeps offline edits while the server is
   unreachable.
 
+## New releases
+
+Each build writes `version.json` next to `index.html` and bakes the same build id
+into the bundle. Open tabs check it every minute and whenever they come back into
+view. Nothing shows until a different build is deployed; then the page blurs and
+offers **Update now** (reloads, once any pending save has gone out) or **Later**
+(silent until the next release). Bump `version` in `package.json` to show a
+version number in the prompt; set `PLANNER_BUILD_ID` at build time to control the id.
+
 ## Layout
 
 ```

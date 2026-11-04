@@ -4,6 +4,7 @@ import { useConfig } from '../lib/config.jsx'
 import { usePlan } from '../lib/store.jsx'
 import { label } from '../lib/dates.js'
 import { when } from '../components/NoteCard.jsx'
+import { RELEASE } from '../components/UpdatePrompt.jsx'
 
 const SOURCE_TEXT = {
   file: 'planner.config.json on the server',
@@ -200,7 +201,7 @@ function Overview() {
   )
 }
 
-export function Settings({ onOpen }) {
+export function Settings({ onOpen, showFooter, setShowFooter }) {
   return (
     <div className="settings-wrap">
       <div className="settings-col">
@@ -208,6 +209,10 @@ export function Settings({ onOpen }) {
         <Trash onOpen={onOpen} />
       </div>
       <ConfigEditor />
+      <label className="settings-fineprint muted tiny">
+        <input type="checkbox" checked={showFooter} onChange={(e) => setShowFooter(e.target.checked)} />
+        Show the “developed by” footer (this browser only) · v{RELEASE.version}
+      </label>
     </div>
   )
 }
