@@ -33,6 +33,7 @@ npm run build          # dist/ (the board and /availability/)
 | To… | Do this |
 | --- | --- |
 | Add, rename or remove tasks; change people, leave, holidays, weeks or scenarios | Edit `planner.config.json`, or use **Settings** in the app (validated as you type, then **Save for everyone**). Open boards rebuild within a few seconds. |
+| Mark holidays or someone's leave | **Availability → Edit days off**: drag across a person's lane for leave, or across the dates for a holiday for everyone (optionally named); drag over marked days to clear them. **Save for everyone** writes them into the shared config, like Settings does. |
 | Move one task | Drag it on any page: a Board card to another week column, a Gantt bar (drag its edges to resize), a Calendar chip to a day, or an Availability bar to a lane (another person's lane hands it over). You can also nudge it from the drawer with **−5 / −1 / +1 / +5 working days**. |
 | Move a person's later work along with it | Keep **push later work** ticked in the toolbar. When a task moves or grows, that owner's later tasks shift by the same number of *their* working days, on every page. |
 | Move many tasks at once | Use **Reschedule…**: pick a start date, a number of working days and which people. It previews every task it will move, and the whole move is one undo. |

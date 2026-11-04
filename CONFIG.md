@@ -22,6 +22,7 @@ them to it to start.
 | Edit it… | What happens |
 | --- | --- |
 | in the file `planner.config.json` | `plan-api` serves the file. Open boards notice the change within one poll (8 s by default) and rebuild. |
+| in the app, **Availability → Edit days off** | Same as Settings below, but only for `calendar.holidays` and each person's `leave`: the lists you touch are rewritten as compact ranges (holiday names kept). |
 | in the app, **Settings → Save for everyone** | Validated in the browser, stored on the server as `config.json` in the data dir, and it **wins over the file** until **Revert to file**. **Download** gives you the edited document to commit back to the file. |
 
 When the config changes, each plan is brought in line **three-way**: for every

@@ -155,7 +155,7 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; }
  * class adds a gap, which would push every track 12px right of the header. */
 .grow { display: flex; align-items: stretch; gap: 0; flex-wrap: nowrap; }
 .side {
-  position: sticky; left: 0; z-index: 3;
+  position: sticky; left: 0; z-index: 4; /* above bars (3), below the sticky header row (5) */
   flex: 0 0 var(--side, 260px); width: var(--side, 260px);
   background: var(--panel); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px;
@@ -552,6 +552,17 @@ h4 .tick { margin-right: 5px; }
 }
 .update-card h3 { margin: 0 0 6px; font-size: 15px; }
 .update-card .row { justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* ---- availability: days-off editor ---- */
+.edit-bar { background: rgba(56, 139, 253, 0.08); border-bottom-color: rgba(56, 139, 253, 0.4); flex-wrap: wrap; }
+.edit-bar .holiday-name { width: 120px; padding: 3px 6px; }
+.lf-editing .avail-track { height: 30px; cursor: crosshair; touch-action: none; user-select: none; }
+.lf-editing .day-row { touch-action: none; user-select: none; }
+.lf-editing .day.paintable { cursor: crosshair; }
+.lf-editing .day:not(.paintable), .lf-editing .avail-track .avail.holiday { cursor: not-allowed; }
+.avail.changed, .day.changed { box-shadow: inset 0 0 0 1px #58a6ff; }
+.avail.changed:not(.leave) { background: rgba(88, 166, 255, 0.12); }
+.day.changed:not(.holiday) { background: rgba(88, 166, 255, 0.12); }
 .update-card { width: min(520px, 100%); }
 .update-notes {
   max-height: 180px; overflow: auto; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;

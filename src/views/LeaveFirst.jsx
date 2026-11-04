@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
-import { ACTIVE_OWNERS as OWNERS, FLAGS, LEAVE_SETS, OWNER_BY_ID, markerDay } from '../lib/model.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ACTIVE_OWNERS as OWNERS, FLAGS, HOLIDAY_NAMES, HOLIDAY_SET, LEAVE_SETS, OWNER_BY_ID, WORKDAYS, markerDay } from '../lib/model.js'
 import { usePlan, sortTasks } from '../lib/store.jsx'
+import { useConfig } from '../lib/config.jsx'
+import { applyDaysOff, draftSize, emptyDraft } from '../lib/daysOff.js'
 import { OwnerFilter } from '../components/OwnerFilter.jsx'
 import {
   TIMELINE_DAYS,
@@ -11,9 +13,29 @@ import {
   isHoliday,
   segmentsOf,
 } from '../lib/schedule.js'
-import { MONTH_NAMES, diffDays, label, parse } from '../lib/dates.js'
+import { MONTH_NAMES, diffDays, dow, label, parse, range } from '../lib/dates.js'
 
 const ZOOMS = [11, 16, 24]
+
+// Saving the config rebuilds the whole app; these carry the editor across it.
+const EDIT_KEY = 'planner-lf-editing'
+const SCROLL_KEY = 'planner-lf-scroll'
+const session = {
+  get(k) {
+    try {
+      return sessionStorage.getItem(k)
+    } catch {
+      return null
+    }
+  },
+  set(k, v) {
+    try {
+      v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v)
+    } catch {
+      /* storage blocked: the editor just closes after a save */
+    }
+  },
+}
 
 /** Put a bar's label on its widest segment, clipped so it never crosses a gap. */
 function labelBox(task, dayW) {
@@ -48,8 +70,11 @@ function monthBands(days, dayW) {
   return bands.map((b) => ({ ...b, width: b.span * dayW }))
 }
 
+const isWorkday = (d) => WORKDAYS.has(dow(d))
+
 export function LeaveFirst({ filter, setFilter, query, onOpen }) {
   const { tasks, plan, dispatch } = usePlan()
+  const cfg = useConfig()
   const [zoom, setZoom] = useState(1)
   const dayW = ZOOMS[zoom]
   const days = TIMELINE_DAYS
@@ -57,6 +82,109 @@ export function LeaveFirst({ filter, setFilter, query, onOpen }) {
   const bands = useMemo(() => monthBands(days, dayW), [days, dayW])
   const gate = markerDay(plan)
   const gateLeft = gate ? diffDays(TIMELINE_START, gate) * dayW : null
+
+  /* ---- days-off editor ---------------------------------------------------- */
+
+  const [editing, setEditing] = useState(() => session.get(EDIT_KEY) === '1')
+  const [draft, setDraft] = useState(emptyDraft)
+  const [paint, setPaint] = useState(null) // { kind: 'holiday' | 'leave', pid, value, anchor, cur }
+  const [holidayName, setHolidayName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const scroller = useRef(null)
+  const changes = draftSize(draft)
+
+  // Back from a save: same place on the timeline.
+  useEffect(() => {
+    const left = session.get(SCROLL_KEY)
+    if (left && scroller.current) scroller.current.scrollLeft = Number(left)
+    session.set(SCROLL_KEY, null)
+  }, [])
+
+  const savedHoliday = (d) => HOLIDAY_SET.has(d)
+  const savedLeave = (pid, d) => !!LEAVE_SETS[pid]?.has(d)
+  const draftHoliday = (d) => (draft.holidays.has(d) ? draft.holidays.get(d) !== null : savedHoliday(d))
+  const draftLeave = (pid, d) => (draft.leave[pid]?.has(d) ? draft.leave[pid].get(d) : savedLeave(pid, d))
+
+  const editable = (kind, pid, d) => isWorkday(d) && (kind === 'holiday' || !draftHoliday(d))
+  const painted = (kind, pid, d) => {
+    if (!paint || paint.kind !== kind || paint.pid !== pid) return undefined
+    const [a, b] = paint.anchor <= paint.cur ? [paint.anchor, paint.cur] : [paint.cur, paint.anchor]
+    return d >= a && d <= b && editable(kind, pid, d) ? paint.value : undefined
+  }
+  /** What a cell shows right now: saved, plus the draft, plus the drag in progress. */
+  const holidayShown = (d) => painted('holiday', null, d) ?? draftHoliday(d)
+  const leaveShown = (pid, d) => painted('leave', pid, d) ?? draftLeave(pid, d)
+
+  const dayAt = (e) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    const i = Math.floor((e.clientX - box.left) / dayW)
+    return days[Math.max(0, Math.min(days.length - 1, i))]
+  }
+
+  const startPaint = (e, kind, pid = null) => {
+    if (!editing || e.button !== 0) return
+    const d = dayAt(e)
+    if (!editable(kind, pid, d)) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const on = kind === 'holiday' ? draftHoliday(d) : draftLeave(pid, d)
+    setPaint({ kind, pid, value: !on, anchor: d, cur: d })
+  }
+  const movePaint = (e) => {
+    if (!paint) return
+    const d = dayAt(e)
+    if (d !== paint.cur) setPaint((p) => ({ ...p, cur: d }))
+  }
+  const endPaint = () => {
+    if (!paint) return
+    const { kind, pid, value, anchor, cur } = paint
+    const span = range(anchor <= cur ? anchor : cur, anchor <= cur ? cur : anchor).filter((d) => editable(kind, pid, d))
+    setDraft((dr) => {
+      const next = { holidays: new Map(dr.holidays), leave: { ...dr.leave } }
+      if (kind === 'holiday') {
+        for (const d of span) {
+          if (value === savedHoliday(d)) next.holidays.delete(d)
+          else next.holidays.set(d, value ? holidayName.trim() : null)
+        }
+      } else {
+        const m = new Map(next.leave[pid] || [])
+        for (const d of span) value === savedLeave(pid, d) ? m.delete(d) : m.set(d, value)
+        next.leave[pid] = m
+      }
+      return next
+    })
+    setPaint(null)
+  }
+
+  const stopEditing = () => {
+    if (changes && !confirm(`Discard ${changes} unsaved change${changes === 1 ? '' : 's'} to days off?`)) return
+    setDraft(emptyDraft())
+    setEditing(false)
+    setMessage('')
+    session.set(EDIT_KEY, null)
+  }
+  const startEditing = () => {
+    setEditing(true)
+    session.set(EDIT_KEY, '1')
+  }
+
+  const save = async () => {
+    setBusy(true)
+    setMessage('')
+    try {
+      const { model } = cfg.validate(cfg.raw)
+      const next = applyDaysOff(cfg.raw, model, draft)
+      session.set(SCROLL_KEY, String(scroller.current?.scrollLeft || 0))
+      await cfg.save(next) // rebuilds the app on the new calendar
+    } catch (err) {
+      session.set(SCROLL_KEY, null)
+      setMessage(err.errors ? err.errors.join('; ') : err.message)
+      setBusy(false)
+    }
+  }
+
+  /* ---- lanes -------------------------------------------------------------- */
 
   const shown = (ownerId) => filter.size === 0 || filter.has(ownerId)
   const matches = (t) => !query || t.title.toLowerCase().includes(query.toLowerCase())
@@ -75,7 +203,7 @@ export function LeaveFirst({ filter, setFilter, query, onOpen }) {
       lastDay: ends[ends.length - 1] || null,
       waiting: mine.filter((t) => !t.start).length,
     }
-  }).filter((l) => l.all.length > 0)
+  }).filter((l) => l.all.length > 0 || editing)
 
   const dropDay = (e, track) => {
     const box = track.getBoundingClientRect()
@@ -90,37 +218,69 @@ export function LeaveFirst({ filter, setFilter, query, onOpen }) {
     dispatch({ type: 'place', id, day: dropDay(e, e.currentTarget), owner: ownerId })
   }
 
+  const offCount = (pid) => days.filter((d) => isWorkday(d) && !draftHoliday(d) && draftLeave(pid, d)).length
+
   return (
-    <div className="lf-wrap">
-      <div className="subbar">
-        <button className="ghost" onClick={() => dispatch({ type: 'autofill' })}>
-          Redraw from the plan
-        </button>
-        <button
-          className="ghost"
-          onClick={() => confirm('Take the dates off every task and start from availability?') && dispatch({ type: 'clear-dates' })}
-        >
-          Clear all dates
-        </button>
-        <span className="muted small">Zoom</span>
-        <div className="seg">
-          {['S', 'M', 'L'].map((z, i) => (
-            <button key={z} className={zoom === i ? 'on' : ''} onClick={() => setZoom(i)}>{z}</button>
-          ))}
+    <div className={`lf-wrap${editing ? ' lf-editing' : ''}`}>
+      {editing ? (
+        <div className="subbar edit-bar">
+          <strong>Editing days off</strong>
+          <span className="muted small">
+            Drag across a person's lane to mark leave, or across the dates to mark a holiday for everyone. Drag over
+            marked days to clear them.
+          </span>
+          <div className="spacer" />
+          <label className="row small">
+            <span className="muted">New holidays are called</span>
+            <input className="holiday-name" value={holidayName} onChange={(e) => setHolidayName(e.target.value)} placeholder="e.g. Diwali" />
+          </label>
+          <span className="muted small">{changes ? `${changes} change${changes === 1 ? '' : 's'}` : 'no changes'}</span>
+          <button className="ghost" disabled={!changes || busy} onClick={() => setDraft(emptyDraft())}>Undo all</button>
+          <button
+            className="ghost primary"
+            disabled={!changes || busy || cfg.source === 'bundled'}
+            title={cfg.source === 'bundled' ? 'No server reachable — nothing can be saved' : 'Writes these days into the shared configuration'}
+            onClick={save}
+          >
+            {busy ? 'Saving…' : 'Save for everyone'}
+          </button>
+          <button className="ghost" disabled={busy} onClick={stopEditing}>Done</button>
+          {message && <span className="warn small">{message}</span>}
         </div>
-        <div className="spacer" />
-        <span className="legend"><i className="swatch holiday-sw" /> holiday</span>
-        <span className="legend"><i className="swatch leave-sw" /> unavailable</span>
-        {gate && <span className="legend"><i className="swatch gate-sw" /> {plan.marker.label} ({label(gate)})</span>}
-      </div>
+      ) : (
+        <div className="subbar">
+          <button className="ghost" onClick={startEditing} title="Mark holidays and people's leave on this timeline">
+            Edit days off
+          </button>
+          <button className="ghost" onClick={() => dispatch({ type: 'autofill' })}>
+            Redraw from the plan
+          </button>
+          <button
+            className="ghost"
+            onClick={() => confirm('Take the dates off every task and start from availability?') && dispatch({ type: 'clear-dates' })}
+          >
+            Clear all dates
+          </button>
+          <span className="muted small">Zoom</span>
+          <div className="seg">
+            {['S', 'M', 'L'].map((z, i) => (
+              <button key={z} className={zoom === i ? 'on' : ''} onClick={() => setZoom(i)}>{z}</button>
+            ))}
+          </div>
+          <div className="spacer" />
+          <span className="legend"><i className="swatch holiday-sw" /> holiday</span>
+          <span className="legend"><i className="swatch leave-sw" /> unavailable</span>
+          {gate && <span className="legend"><i className="swatch gate-sw" /> {plan.marker.label} ({label(gate)})</span>}
+        </div>
+      )}
 
       <div className="subbar">
         <OwnerFilter filter={filter} setFilter={setFilter} label="Show tasks for" />
         <div className="spacer" />
         <span className="muted small">
-          The plan's order, week by week, worth a full week each; leave pushes a week later and everything
-          after it with it. Drag a task onto a lane to plan it by hand (another person's lane hands it over), or
-          onto the tray to take its dates off.
+          {editing
+            ? 'Task bars keep their dates; they re-segment around the new days off once saved. Use Redraw afterwards to re-place work around them.'
+            : "The plan's order, week by week, worth a full week each; leave pushes a week later and everything after it with it. Drag a task onto a lane to plan it by hand (another person's lane hands it over), or onto the tray to take its dates off."}
         </span>
       </div>
 
@@ -166,22 +326,38 @@ export function LeaveFirst({ filter, setFilter, query, onOpen }) {
           })}
         </aside>
 
-        <div className="lf-scroll">
+        <div className="lf-scroll" ref={scroller}>
           <div className="lf-inner" style={{ '--track': `${totalW}px` }}>
             <div className="grow head-row">
-              <div className="side head-side">Availability</div>
+              <div className="side head-side">{editing ? 'Holidays — drag the dates' : 'Availability'}</div>
               <div className="track">
                 <div className="band-row">
                   {bands.map((b, i) => (
                     <div key={i} className="band" style={{ width: b.width }}>{MONTH_NAMES[b.m - 1]}</div>
                   ))}
                 </div>
-                <div className="day-row">
-                  {days.map((d) => (
-                    <div key={d} className={`day${isHoliday(d) ? ' holiday' : ''}`} style={{ width: dayW }}>
-                      <span>{parse(d).getUTCDate()}</span>
-                    </div>
-                  ))}
+                <div
+                  className="day-row"
+                  onPointerDown={(e) => startPaint(e, 'holiday')}
+                  onPointerMove={movePaint}
+                  onPointerUp={endPaint}
+                  onPointerCancel={() => setPaint(null)}
+                >
+                  {days.map((d) => {
+                    const hol = editing ? !isWorkday(d) || holidayShown(d) : isHoliday(d)
+                    const changed = editing && isWorkday(d) && holidayShown(d) !== savedHoliday(d)
+                    const name = HOLIDAY_NAMES[d] || (draft.holidays.get(d) ?? '')
+                    return (
+                      <div
+                        key={d}
+                        className={`day${hol ? ' holiday' : ''}${changed ? ' changed' : ''}${editing && isWorkday(d) ? ' paintable' : ''}`}
+                        style={{ width: dayW }}
+                        title={`${label(d)}${hol ? (isWorkday(d) ? ` · holiday${name ? `: ${name}` : ''}` : ' · not a workday') : ''}`}
+                      >
+                        <span>{parse(d).getUTCDate()}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -197,31 +373,39 @@ export function LeaveFirst({ filter, setFilter, query, onOpen }) {
                       <strong>{o.name}</strong>
                       <span className="spacer" />
                       <span className="muted tiny">
-                        {lane.scheduled.length} tasks
-                        {lane.waiting ? ` · ${lane.waiting} waiting` : ''}
+                        {editing
+                          ? `${offCount(o.id)} days off`
+                          : `${lane.scheduled.length} tasks${lane.waiting ? ` · ${lane.waiting} waiting` : ''}`}
                       </span>
                     </div>
                     <div
                       className="track avail-track"
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => onDropInLane(e, o.id)}
+                      onPointerDown={(e) => startPaint(e, 'leave', o.id)}
+                      onPointerMove={movePaint}
+                      onPointerUp={endPaint}
+                      onPointerCancel={() => setPaint(null)}
                     >
                       {days.map((d, i) => {
-                        const hol = isHoliday(d)
-                        const off = LEAVE_SETS[o.id]?.has(d)
+                        const hol = editing ? !isWorkday(d) || holidayShown(d) : isHoliday(d)
+                        const off = editing ? !hol && leaveShown(o.id, d) : LEAVE_SETS[o.id]?.has(d)
+                        const changed = editing && !hol && leaveShown(o.id, d) !== savedLeave(o.id, d)
                         return (
                           <div
                             key={d}
-                            className={`avail${hol ? ' holiday' : ''}${off ? ' leave' : ''}`}
+                            className={`avail${hol ? ' holiday' : ''}${off ? ' leave' : ''}${changed ? ' changed' : ''}`}
                             style={{ left: i * dayW, width: dayW }}
                             title={`${label(d)} · ${hol ? 'holiday' : off ? `${o.name} unavailable` : 'available'}`}
                           />
                         )
                       })}
                       {gate && <div className="gate" style={{ left: gateLeft }} title={`${plan.marker.label} ${label(gate)}`} />}
-                      <span className="lane-end muted tiny" style={{ left: 4 }}>
-                        {lane.lastDay ? `ends ${label(lane.lastDay)}` : 'nothing scheduled'}
-                      </span>
+                      {!editing && (
+                        <span className="lane-end muted tiny" style={{ left: 4 }}>
+                          {lane.lastDay ? `ends ${label(lane.lastDay)}` : 'nothing scheduled'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
