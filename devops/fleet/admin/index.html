@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planner fleet</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --fg:#1d1d1b; --muted:#6b6b66; --line:#e3e3de; --accent:#2f5bd3; --ok:#1f8a4c; --bad:#c2402f; --warn:#b07a00; --code:#f0f0ec; --chip:#ecebe6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151515; --card:#1e1e1e; --fg:#ececea; --muted:#9a9a94; --line:#2f2f2d; --accent:#7b9dff; --ok:#4cc27f; --bad:#ff7a66; --warn:#e3b341; --code:#111; --chip:#2a2a28; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 28px 16px 64px; }
+  header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0; max-width: 60ch; }
+  .me { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:14px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:20px; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--muted); font-weight:500; font-size:13px; } tr:last-child td { border-bottom:0; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; background:currentColor; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .muted { color: var(--muted); }
+  .chip { display:inline-block; padding:1px 8px; border-radius:999px; background:var(--chip); font-size:12px; }
+  form.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .field { display:flex; align-items:center; border:1px solid var(--line); border-radius:8px; overflow:hidden; flex:1 1 280px; background:var(--bg); }
+  .field span { padding:0 10px; color:var(--muted); white-space:nowrap; }
+  input, select { font:inherit; color:inherit; }
+  .field input { flex:1; min-width:0; border:0; padding:9px 10px; background:transparent; outline:none; }
+  input.box, select.box { border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--bg); min-width:0; }
+  button { border:0; border-radius:8px; padding:8px 14px; font:inherit; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--line); font-weight:500; }
+  button.danger { background:transparent; color:var(--bad); border:1px solid var(--line); font-weight:500; }
+  button.small { padding:4px 10px; font-size:13px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .hint { color:var(--muted); font-size:13px; margin:10px 0 0; } .error { color:var(--bad); margin:10px 0 0; }
+  pre { background:var(--code); border-radius:8px; padding:12px; max-height:360px; overflow:auto; font-size:12px; white-space:pre-wrap; word-break:break-word; margin:12px 0 0; }
+  .jobs tr[data-id] { cursor:pointer; }
+  .login { max-width:360px; margin:12vh auto 0; }
+  .login form { display:grid; gap:10px; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  dialog { border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg); padding:18px; max-width:380px; width:calc(100% - 32px); }
+  dialog::backdrop { background:rgba(0,0,0,.35); }
+  dialog form { display:grid; gap:10px; }
+  @media (max-width: 600px) { .hide-sm { display:none; } }
+</style>
+</head>
+<body>
+<main>
+  <!-- Sign in -->
+  <section class="login" id="loginView" hidden>
+    <h1>Planner fleet</h1>
+    <p class="sub" style="margin-bottom:14px">Sign in to see and manage the plans on this box.</p>
+    <form id="loginForm">
+      <input class="box" id="lu" placeholder="Username" autocomplete="username" autocapitalize="none" required>
+      <input class="box" id="lp" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button>Sign in</button>
+      <p class="error" id="loginErr" hidden></p>
+    </form>
+  </section>
+
+  <!-- Signed in -->
+  <div id="appView" hidden>
+    <header>
+      <div>
+        <h1>Planner fleet</h1>
+        <p class="sub">Every planner on this box. Adding one copies the template, starts it with the default config, puts it behind its hostname and gets its certificate.</p>
+      </div>
+      <div class="me"><span id="who"></span><button class="ghost small" id="pwBtn">Change password</button><button class="ghost small" id="logout">Sign out</button></div>
+    </header>
+
+    <section id="addBox" hidden>
+      <h2>Add a plan</h2>
+      <form class="row" id="add">
+        <label class="field"><input id="sub" placeholder="baz" autocomplete="off" spellcheck="false" required><span id="domain">.domain</span></label>
+        <button id="go">Add plan</button>
+      </form>
+      <p class="hint" id="hint">Create the DNS A record first, pointing the name at this box.</p>
+      <p class="error" id="err" hidden></p>
+    </section>
+
+    <section id="jobbox" hidden>
+      <h2 id="jobtitle">Deploy</h2>
+      <div id="jobstate"></div>
+      <pre id="log"></pre>
+    </section>
+
+    <section>
+      <h2>Plans</h2>
+      <div class="scroll"><table><thead><tr><th>Name</th><th>Site</th><th class="hide-sm">Owner</th><th class="hide-sm">Port</th><th>Health</th><th></th></tr></thead><tbody id="planners"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+      <p class="error" id="planErr" hidden></p>
+    </section>
+
+    <section>
+      <h2>Recent deploys</h2>
+      <div class="scroll"><table class="jobs"><tbody id="jobs"><tr><td>None yet.</td></tr></tbody></table></div>
+    </section>
+
+    <section id="usersBox" hidden>
+      <h2>Users</h2>
+      <form class="row" id="newUser">
+        <input class="box" id="nuName" placeholder="username" autocomplete="off" autocapitalize="none" required style="flex:1 1 140px">
+        <input class="box" id="nuPw" type="password" placeholder="password (8+)" autocomplete="new-password" required style="flex:1 1 140px">
+        <select class="box" id="nuRole"><option value="viewer">viewer</option><option value="user" selected>user</option><option value="admin">admin</option></select>
+        <button>Add user</button>
+      </form>
+      <p class="hint">viewer: sees plans · user: also adds plans and deletes their own · admin: everything, including users and this log.</p>
+      <p class="error" id="userErr" hidden></p>
+      <div class="scroll"><table><thead><tr><th>User</th><th>Role</th><th class="hide-sm">Added</th><th></th></tr></thead><tbody id="users"></tbody></table></div>
+    </section>
+
+    <section id="activityBox" hidden>
+      <h2>Activity</h2>
+      <div class="scroll"><table><thead><tr><th>When</th><th>User</th><th>Action</th><th>Target</th><th class="hide-sm">Detail</th></tr></thead><tbody id="activity"></tbody></table></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="pwDialog">
+  <form id="pwForm">
+    <h2 id="pwTitle">Change password</h2>
+    <input class="box" id="pwCurrent" type="password" placeholder="Current password" autocomplete="current-password">
+    <input class="box" id="pwNew" type="password" placeholder="New password (8+)" autocomplete="new-password" required>
+    <p class="error" id="pwErr" hidden></p>
+    <div class="actions"><button>Save</button><button type="button" class="ghost" id="pwCancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]))
+const when = (t) => t ? new Date(t).toLocaleString() : ''
+const stateClass = { done:'ok', failed:'bad', running:'warn', queued:'warn' }
+let me = null, watching = null, timer = null, refresher = null, pwTarget = null
+
+async function api(path, opts = {}) {
+  const init = { cache: 'no-store', ...opts }
+  if (init.body !== undefined) init.headers = { 'Content-Type': 'application/json', ...(init.headers || {}) }
+  const r = await fetch(path, init)
+  const body = await r.json().catch(() => ({}))
+  if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('signed out') }
+  if (!r.ok) throw Object.assign(new Error(body.error || r.statusText), { body })
+  return body
+}
+const showErr = (id, e) => { $(id).textContent = e.message; $(id).hidden = false }
+const hideErr = (id) => { $(id).hidden = true }
+
+function showLogin() {
+  me = null
+  clearInterval(refresher); clearTimeout(timer)
+  $('appView').hidden = true; $('loginView').hidden = false
+  $('lu').focus()
+}
+
+function showApp(user) {
+  me = user
+  $('loginView').hidden = true; $('appView').hidden = false
+  $('who').innerHTML = `${esc(me.username)} <span class="chip">${esc(me.role)}</span>`
+  $('addBox').hidden = me.role === 'viewer'
+  $('usersBox').hidden = $('activityBox').hidden = me.role !== 'admin'
+  refresh(true)
+  clearInterval(refresher)
+  refresher = setInterval(() => refresh(false), 15000)
+}
+
+function refresh(first) {
+  loadPlanners().catch(() => {})
+  loadJobs().then(async (jobs) => {
+    if (!first) return
+    const live = jobs.find((j) => j.state === 'queued' || j.state === 'running')
+    if (live) showJob(live.id)
+  }).catch(() => {})
+  if (me?.role === 'admin') { loadUsers().catch(() => {}); loadActivity().catch(() => {}) }
+}
+
+function canRemove(p) { return !p.protected && (me.role === 'admin' || (me.role === 'user' && p.owner === me.username)) }
+
+async function loadPlanners() {
+  const d = await api('/api/planners')
+  $('domain').textContent = '.' + d.domain
+  $('hint').textContent = `Create the DNS A record first: <name>.${d.domain} → ${d.publicIp}.`
+  $('planners').innerHTML = d.planners.map((p) => `<tr>
+    <td>${esc(p.name)}</td><td><a href="https://${esc(p.host)}" target="_blank" rel="noopener">${esc(p.host)}</a></td>
+    <td class="hide-sm">${esc(p.owner)}</td><td class="hide-sm">${p.port}</td>
+    <td class="${p.healthy ? 'ok' : 'bad'}"><span class="dot"></span>${p.healthy ? 'up' : 'down'}</td>
+    <td>${canRemove(p) ? `<button class="danger small" data-remove="${esc(p.name)}" data-host="${esc(p.host)}">Delete</button>`
+        : p.protected && me.role !== 'viewer' ? '<span class="muted" title="Runs the edge / is the template for new plans">protected</span>' : ''}</td></tr>`).join('')
+    || '<tr><td colspan="6">No plans yet.</td></tr>'
+}
+
+async function loadJobs() {
+  const { jobs } = await api('/api/jobs')
+  $('jobs').innerHTML = jobs.map((j) => `<tr data-id="${esc(j.id)}">
+    <td class="${stateClass[j.state] || ''}">${esc(j.state)}</td><td>${esc(j.action || 'add')} ${esc(j.target)}</td>
+    <td class="hide-sm">${esc(j.requestedBy || '')}</td><td class="hide-sm">${esc(j.message)}</td><td class="hide-sm">${esc(when(j.at))}</td></tr>`).join('')
+    || '<tr><td>None yet.</td></tr>'
+  return jobs
+}
+
+async function showJob(id) {
+  watching = id
+  clearTimeout(timer)
+  let j
+  try { j = await api('/api/jobs/' + encodeURIComponent(id)) }
+  catch (e) { if (me && watching === id) timer = setTimeout(() => showJob(id), 2000); return }
+  if (watching !== id) return
+  $('jobbox').hidden = false
+  $('jobtitle').textContent = `${j.action === 'remove' ? 'Delete' : 'Deploy'}: ${j.target}`
+  $('jobstate').innerHTML = `<span class="${stateClass[j.state] || ''}">${esc(j.state)}</span> · ${esc(j.message)}${j.requestedBy ? ` · by ${esc(j.requestedBy)}` : ''}`
+  const log = $('log'), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20
+  log.textContent = j.log || '…'
+  if (atEnd) log.scrollTop = log.scrollHeight
+  if (j.state === 'queued' || j.state === 'running') timer = setTimeout(() => showJob(id), 2000)
+  else refresh(false)
+}
+
+async function loadUsers() {
+  const { users } = await api('/api/users')
+  $('users').innerHTML = users.map((u) => {
+    const root = u.username === 'admin'
+    const roleCell = root ? '<span class="chip">admin · root</span>'
+      : `<select class="box" data-role="${esc(u.username)}">${['viewer', 'user', 'admin'].map((r) => `<option ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')}</select>`
+    return `<tr><td>${esc(u.username)}</td><td>${roleCell}</td><td class="hide-sm">${esc(when(u.createdAt))}${u.createdBy ? ` by ${esc(u.createdBy)}` : ''}</td>
+      <td><div class="actions"><button class="ghost small" data-reset="${esc(u.username)}">Reset password</button>
+      ${root || u.username === me.username ? '' : `<button class="danger small" data-deluser="${esc(u.username)}">Delete</button>`}</div></td></tr>`
+  }).join('')
+}
+
+async function loadActivity() {
+  const { activity } = await api('/api/activity?limit=200')
+  $('activity').innerHTML = activity.map((a) => `<tr>
+    <td>${esc(when(a.at))}</td><td>${esc(a.user)}</td>
+    <td class="${a.result === 'failed' || a.result === 'denied' ? 'bad' : a.result === 'done' ? 'ok' : ''}">${esc(a.action)}${a.result && a.result !== 'ok' ? ` (${esc(a.result)})` : ''}</td>
+    <td>${esc(a.target)}</td><td class="hide-sm muted">${esc(a.detail)}${a.ip ? ` · ${esc(a.ip)}` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="5">Nothing yet.</td></tr>'
+}
+
+// ---- events ----
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); hideErr('loginErr')
+  try {
+    const u = await api('/api/login', { method: 'POST', body: JSON.stringify({ username: $('lu').value, password: $('lp').value }) })
+    $('lp').value = ''
+    showApp(u)
+  } catch (err) { showErr('loginErr', err) }
+})
+
+$('logout').addEventListener('click', async () => {
+  try { await api('/api/logout', { method: 'POST', body: '{}' }) } catch {}
+  showLogin()
+})
+
+$('add').addEventListener('submit', async (e) => {
+  e.preventDefault(); hideErr('err')
+  $('go').disabled = true
+  try {
+    const { id } = await api('/api/planners', { method: 'POST', body: JSON.stringify({ subdomain: $('sub').value }) })
+    $('sub').value = ''
+    await loadJobs(); showJob(id)
+  } catch (err) {
+    showErr('err', err)
+    if (err.body?.id) showJob(err.body.id)
+  } finally { $('go').disabled = false }
+})
+
+$('planners').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-remove]')
+  if (!b) return
+  hideErr('planErr')
+  const name = b.dataset.remove
+  if (!confirm(`Delete ${name}?\n\nhttps://${b.dataset.host} goes offline. Its folder and plan data are kept on the box, so an admin can bring it back.`)) return
+  try {
+    const { id } = await api('/api/planners/' + encodeURIComponent(name), { method: 'DELETE' })
+    await loadJobs(); showJob(id)
+  } catch (err) { showErr('planErr', err); if (err.body?.id) showJob(err.body.id) }
+})
+
+$('jobs').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) showJob(tr.dataset.id) })
+
+$('newUser').addEventListener('submit', async (e) => {
+  e.preventDefault(); hideErr('userErr')
+  try {
+    await api('/api/users', { method: 'POST', body: JSON.stringify({ username: $('nuName').value, password: $('nuPw').value, role: $('nuRole').value }) })
+    $('nuName').value = ''; $('nuPw').value = ''
+    loadUsers(); loadActivity()
+  } catch (err) { showErr('userErr', err) }
+})
+
+$('users').addEventListener('change', async (e) => {
+  const s = e.target.closest('select[data-role]')
+  if (!s) return
+  hideErr('userErr')
+  try { await api('/api/users/' + encodeURIComponent(s.dataset.role), { method: 'PATCH', body: JSON.stringify({ role: s.value }) }); loadActivity() }
+  catch (err) { showErr('userErr', err); loadUsers() }
+})
+
+$('users').addEventListener('click', async (e) => {
+  const del = e.target.closest('button[data-deluser]'), reset = e.target.closest('button[data-reset]')
+  hideErr('userErr')
+  if (del) {
+    if (!confirm(`Delete user ${del.dataset.deluser}? Plans they added stay, owned by them in name; admins can still manage them.`)) return
+    try { await api('/api/users/' + encodeURIComponent(del.dataset.deluser), { method: 'DELETE' }); loadUsers(); loadActivity() }
+    catch (err) { showErr('userErr', err) }
+  }
+  if (reset) openPw(reset.dataset.reset)
+})
+
+// One dialog for "change my password" and an admin's "reset X's password".
+function openPw(target) {
+  pwTarget = target && target !== me.username ? target : null
+  $('pwTitle').textContent = pwTarget ? `Reset password for ${pwTarget}` : 'Change password'
+  $('pwCurrent').hidden = !!pwTarget; $('pwCurrent').required = !pwTarget
+  $('pwCurrent').value = ''; $('pwNew').value = ''; hideErr('pwErr')
+  $('pwDialog').showModal()
+}
+$('pwBtn').addEventListener('click', () => openPw(null))
+$('pwCancel').addEventListener('click', () => $('pwDialog').close())
+$('pwForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); hideErr('pwErr')
+  try {
+    if (pwTarget) await api('/api/users/' + encodeURIComponent(pwTarget), { method: 'PATCH', body: JSON.stringify({ password: $('pwNew').value }) })
+    else await api('/api/me/password', { method: 'POST', body: JSON.stringify({ current: $('pwCurrent').value, password: $('pwNew').value }) })
+    $('pwDialog').close()
+    if (me.role === 'admin') loadActivity()
+  } catch (err) { showErr('pwErr', err) }
+})
+
+api('/api/me').then(showApp).catch(() => showLogin())
+</script>
+</body>
+</html>

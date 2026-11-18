@@ -1,0 +1,13 @@
+# Runs planner-ctl.sh run-queue once: every pending request, one at a time.
+# Started by planner-fleet.path. Install: see devops/fleet/README.md.
+[Unit]
+Description=Add the planners requested from the fleet admin page
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+EnvironmentFile=/etc/planner-fleet.env
+ExecStart=/home/ubuntu/planner-fleet/bin/planner-ctl.sh run-queue
+TimeoutStartSec=60min

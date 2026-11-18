@@ -1,7 +1,7 @@
 {
   "project": {
-    "id": "unbox",
-    "title": "unbox — hardware effort breakdown",
+    "id": "foo",
+    "title": "foo — hardware effort breakdown",
     "docUrl": "https://wiki.dummy.com/doc/effort-breakdown-hardware-week-3-6SbAlnHfGq"
   },
   "calendar": {
@@ -81,7 +81,7 @@
       "leave": ["2026-09-09", "2026-09-10", "2026-09-11", "2026-11-11"]
     },
     {"id": "gideon", "name": "Gideon", "color": "#C8AFF0", "fg": "#241338"},
-    {"id": "unbox", "name": "unbox (team)", "color": "#ec0808", "fg": "#ffffff", "hidden": true},
+    {"id": "foo", "name": "foo (team)", "color": "#ec0808", "fg": "#ffffff", "hidden": true},
     {"id": "thirdparty", "name": "third-party", "color": "#3CBEFC", "fg": "#00253a", "scheduling": "fixed"}
   ],
   "areas": [
@@ -199,7 +199,7 @@
     {
       "id": "t8",
       "title": "Docs built in parallel",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w2",
       "area": "Ops",
       "outcome": "docs keep pace with the build"
@@ -480,7 +480,7 @@
     {
       "id": "t39",
       "title": "Fix what breaks",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w8",
       "tag": "Clay + Hari + Gideon",
       "area": "Ops",
@@ -499,7 +499,7 @@
     {
       "id": "t41",
       "title": "Accommodate carry-overs",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w9",
       "area": "Ops",
       "outcome": "carry-overs are absorbed"
@@ -507,7 +507,7 @@
     {
       "id": "t42",
       "title": "TEST TEST TEST",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w10",
       "area": "Ops",
       "outcome": "the system is under test"
@@ -515,7 +515,7 @@
     {
       "id": "t43",
       "title": "EOW 10 handover!",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w10",
       "milestone": true,
       "area": "Ops",
@@ -524,7 +524,7 @@
     {
       "id": "t44",
       "title": "Buffer - carry-overs and testing",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w11",
       "area": "Ops",
       "outcome": "buffer for carry-overs and testing"
@@ -532,7 +532,7 @@
     {
       "id": "t45",
       "title": "Optional buffer week",
-      "owner": "unbox",
+      "owner": "foo",
       "week": "w12",
       "area": "Ops",
       "outcome": "spare buffer week"

@@ -1,0 +1,11 @@
+# Watches for requests from the fleet admin page: it writes
+# requests/<id>.json, and this starts planner-fleet.service.
+[Unit]
+Description=Watch for new planner requests
+
+[Path]
+PathExistsGlob=/home/ubuntu/planner-fleet/requests/*.json
+Unit=planner-fleet.service
+
+[Install]
+WantedBy=multi-user.target

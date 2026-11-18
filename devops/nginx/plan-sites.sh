@@ -5,7 +5,7 @@
 #
 # PLAN_SITES is a space-separated list of hostname=port:
 #
-#   PLAN_SITES="ubr.neuralpilot-dev.com=8080 osmos.neuralpilot-dev.com=8081"
+#   PLAN_SITES="foo.example.com=8080 bar.example.com=8081"
 #
 # Each site gets
 #   :80   /.well-known/acme-challenge/ from the certbot webroot, else -> https

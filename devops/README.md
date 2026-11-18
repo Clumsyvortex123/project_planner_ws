@@ -5,9 +5,9 @@ shared**: each planner's `plan-api` holds one JSON document per plan on a volume
 and every browser reads and writes it.
 
 ```
-                         ┌─ 127.0.0.1:8080  plan-ui ─ /api/ ─ plan-api    (ubr checkout)
+                         ┌─ 127.0.0.1:8080  plan-ui ─ /api/ ─ plan-api    (foo checkout)
 :80/:443  nginx-plan ────┤
-  PLAN_SITES maps        └─ 127.0.0.1:8081  osmos-ui ─ /api/ ─ osmos-api  (osmos checkout)
+  PLAN_SITES maps        └─ 127.0.0.1:8081  bar-ui ─ /api/ ─ bar-api  (bar checkout)
   hostname -> port
 ```
 
@@ -34,14 +34,14 @@ devops/
 
 ## What keeps two planners apart
 
-| | first planner (ubr) | another planner (osmos) |
+| | first planner (foo) | another planner (bar) |
 | --- | --- | --- |
-| `COMPOSE_PROJECT_NAME` | unset → project `docker` | `osmos` |
-| containers | `plan-api`, `plan-ui` | `osmos-api`, `osmos-ui` |
-| images | `plan-api:local`, `plan-ui:local` | `osmos-api:local`, `osmos-ui:local` |
-| volume | `docker_plan_data` | `osmos_plan_data` |
+| `COMPOSE_PROJECT_NAME` | unset → project `docker` | `bar` |
+| containers | `plan-api`, `plan-ui` | `bar-api`, `bar-ui` |
+| images | `plan-api:local`, `plan-ui:local` | `bar-api:local`, `bar-ui:local` |
+| volume | `docker_plan_data` | `bar_plan_data` |
 | `PLAN_PORT` | `8080` (default) | `8081` |
-| hostname (`PLAN_SITES`) | `ubr.neuralpilot-dev.com=8080` | `osmos.neuralpilot-dev.com=8081` |
+| hostname (`PLAN_SITES`) | `foo.example.com=8080` | `bar.example.com=8081` |
 
 `COMPOSE_PROJECT_NAME` is not optional for a second planner. Every checkout's
 compose file sits in a directory called `docker`, so without it both would be
@@ -51,12 +51,16 @@ unset, so it keeps the names it already has.
 
 ## Adding a planner to a box that already runs one
 
-On the osmos checkout:
+> With the fleet installed, **[devops/fleet/](fleet/README.md)** does all of
+> this from a web page (or `planner-ctl.sh add <subdomain>`). The manual steps
+> below are what it automates.
+
+On the bar checkout:
 
 ```bash
 test -f planner.config.json || cp planner.config.example.json planner.config.json
 cd devops/docker
-cp .env.plan.example .env      # COMPOSE_PROJECT_NAME=osmos, PLAN_PORT=8081
+cp .env.plan.example .env      # COMPOSE_PROJECT_NAME=bar, PLAN_PORT=8081
 docker compose -f compose.plan.yml up -d --build
 curl -s 127.0.0.1:8081/api/health
 ```
@@ -67,7 +71,7 @@ recreate the edge. The new hostname has no certificate yet, so it is served on
 
 ```bash
 cd devops/docker
-# .env: PLAN_SITES="ubr.neuralpilot-dev.com=8080 osmos.neuralpilot-dev.com=8081"
+# .env: PLAN_SITES="foo.example.com=8080 bar.example.com=8081"
 docker compose -f compose.edge.yml up -d --force-recreate nginx
 ```
 
@@ -79,7 +83,7 @@ up and adds the :443 block:
 sudo docker run --rm \
   -v /etc/letsencrypt:/etc/letsencrypt \
   -v /var/www/certbot:/var/www/certbot \
-  certbot/certbot certonly --webroot -w /var/www/certbot -d osmos.neuralpilot-dev.com
+  certbot/certbot certonly --webroot -w /var/www/certbot -d bar.example.com
 docker restart nginx-plan
 ```
 
@@ -95,7 +99,7 @@ checkout, after pulling:
 
 ```bash
 cd devops/docker
-# .env: add PLAN_SITES="ubr.neuralpilot-dev.com=8080"; the old PLAN_SERVER_NAME,
+# .env: add PLAN_SITES="foo.example.com=8080"; the old PLAN_SERVER_NAME,
 #       PLAN_*_UPSTREAM and PLAN_*_HOST_PORT lines are no longer read
 docker compose -f compose.plan.yml up -d --build --remove-orphans   # rebuilds plan-ui with /api/; removes the old nginx-plan + certbot-plan
 docker compose -f compose.edge.yml up -d                            # the edge again, now for every site
@@ -149,8 +153,8 @@ overwriting one another.
 The volume is the whole of that planner's state:
 
 ```bash
-docker run --rm -v osmos_plan_data:/data -v "$PWD":/out alpine tar czf /out/plans.tgz -C /data .
-docker exec osmos-api cat /data/main.json        # or just read one
+docker run --rm -v bar_plan_data:/data -v "$PWD":/out alpine tar czf /out/plans.tgz -C /data .
+docker exec bar-api cat /data/main.json        # or just read one
 ```
 
 (The box's original planner is `docker_plan_data` / `plan-api`.)

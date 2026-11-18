@@ -1,6 +1,6 @@
 # Project planner
 
-A configurable version of the unbox plan board. **One document,
+A configurable version of the foo plan board. **One document,
 `planner.config.json`, describes the whole project**:
 people and their leave, workdays, holidays, weeks, every task, and any number of
 scenarios. The board, calendar, Gantt, availability lanes, week summaries and
@@ -8,7 +8,7 @@ the standalone `/availability/` page are all built from it at runtime.
 
 `planner.config.json` is **not tracked by git** (it is in `.gitignore`): each
 deployment keeps its own plan. The repo ships
-[`planner.config.example.json`](planner.config.example.json), the unbox hardware
+[`planner.config.example.json`](planner.config.example.json), the foo hardware
 plan (both the week-3 and week-8 robot arrival docs), as a starting point. Copy
 it, then replace its content with your project.
 
@@ -97,7 +97,7 @@ is live, every board offers **Reload now**. Nothing shows when there is nothing 
 
 ```
 planner.config.json      the project — the only place plan content lives (untracked)
-planner.config.example.json  a complete example (the unbox plan) to copy from
+planner.config.example.json  a complete example (the foo plan) to copy from
 CONFIG.md                every config field
 examples/                a minimal config to start from
 server/index.mjs         plan + notes + config store (node, no dependencies)

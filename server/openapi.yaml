@@ -387,8 +387,8 @@ components:
         project:
           type: object
           properties:
-            id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,31}$', example: unbox }
-            title: { type: string, example: unbox — hardware effort breakdown }
+            id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,31}$', example: foo }
+            title: { type: string, example: foo — hardware effort breakdown }
             docUrl: { type: string, format: uri }
         calendar:
           type: object

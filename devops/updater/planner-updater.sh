@@ -22,6 +22,7 @@ set -euo pipefail
 RELEASE_REPO="${RELEASE_REPO:-Clumsyvortex123/project_planner_ws}"
 UPDATE_DIR="${UPDATE_DIR:-$HOME/planner-updates}"
 CHECKOUTS="${CHECKOUTS:-}"            # space-separated absolute paths
+FLEET_REGISTRY="${FLEET_REGISTRY:-}"  # or: the fleet's planners.tsv (devops/fleet/)
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-10}"    # per checkout
 
@@ -30,7 +31,12 @@ REQUEST="$UPDATE_DIR/request.json"
 LOG="$UPDATE_DIR/last-update.log"
 
 die() { echo "planner-updater: $*" >&2; exit 1; }
-[ -n "$CHECKOUTS" ] || die "CHECKOUTS is not set"
+# With the fleet installed, every planner in its registry gets the release, so a
+# newly added planner needs no change here.
+if [ -z "$CHECKOUTS" ] && [ -n "$FLEET_REGISTRY" ] && [ -f "$FLEET_REGISTRY" ]; then
+  CHECKOUTS=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$FLEET_REGISTRY" | cut -f2 | tr '\n' ' ')
+fi
+[ -n "$CHECKOUTS" ] || die "CHECKOUTS is not set (nor FLEET_REGISTRY)"
 mkdir -p "$UPDATE_DIR" "$BACKUP_DIR"
 
 # One run at a time; a second request while one is deploying is picked up after.

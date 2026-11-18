@@ -1,0 +1,40 @@
+# The fleet admin page (admin/server.mjs): lists the planners on this box and
+# queues new ones for planner-ctl.sh, which runs on the host. See README.md.
+#
+#   cd devops/fleet
+#   cp fleet.env.example .env        # set FLEET_ADMIN_PASSWORD
+#   docker compose -f compose.fleet.yml up -d
+#
+# The edge reaches it at 127.0.0.1:8090 through ADMIN_SITE in PLAN_SITES.
+
+name: plan-fleet
+
+services:
+  admin:
+    image: node:22-alpine
+    container_name: fleet-admin
+    # Host network, so it can check each planner's health on 127.0.0.1:<port>.
+    # It listens on loopback only; the edge is the only way in.
+    network_mode: host
+    # The host user that owns ~/planner-fleet, so planner-ctl.sh can read and
+    # delete the request files this writes.
+    user: "${FLEET_UID:-1000}:${FLEET_GID:-1000}"
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      FLEET_HOME: /fleet
+      FLEET_DOMAIN: ${FLEET_DOMAIN:?set FLEET_DOMAIN in .env}
+      PUBLIC_IP: ${PUBLIC_IP:-}
+      ADMIN_SITE: ${ADMIN_SITE:-}
+      # Only used on the very first start, to create the root user "admin".
+      # After that, passwords live (hashed) in users.json and change from the page.
+      FLEET_ADMIN_PASSWORD: ${FLEET_ADMIN_PASSWORD:-}
+      # Plans in these checkouts can't be deleted from the page.
+      FLEET_EDGE_CHECKOUT: ${FLEET_EDGE_CHECKOUT:-}
+      FLEET_TEMPLATE: ${FLEET_TEMPLATE:-}
+      FLEET_ADMIN_PORT: ${FLEET_ADMIN_PORT:-8090}
+    volumes:
+      - ./admin:/app:ro
+      # Registry, requests, job status and logs. Nothing else of the host.
+      - ${FLEET_HOME:-/home/ubuntu/planner-fleet}:/fleet
+    restart: unless-stopped
